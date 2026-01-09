@@ -10,23 +10,21 @@ const app = express();
 app.use(express.json());
 
 // Servir imatges pujades localment
-// Exemple: http://localhost:3000/uploads/fitxer.jpg
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Importem les rutes de tasques i d'upload
+// Importar rutes
 const taskRoutes = require("./routes/taskRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 // Ruta bàsica per comprovar que el servidor funciona
 app.get("/", (req, res) => {
-  res.json({ missatge: "API de Gestor de Tasques activa ✅" });
+  res.json({ missatge: "API de Gestor de Tasques amb Autenticació activa ✅" });
 });
 
 // Muntam les rutes
-// Tasques: /api/tasks...
-app.use("/api", taskRoutes);
-
-// Upload: /api/upload/local, /api/upload/cloud
+app.use("/api/auth", authRoutes);
+app.use("/api/tasks", taskRoutes);
 app.use("/api/upload", uploadRoutes);
 
 // Ruta 404 (ha d'anar al final)

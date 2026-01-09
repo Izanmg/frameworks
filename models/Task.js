@@ -53,6 +53,13 @@ const taskSchema = new mongoose.Schema(
       default: false,
     },
 
+    // 👤 Usuari: Referència a l'usuari que ha creat la tasca
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
     // 📅 Data de finalització: s'omple automàticament quan es completa
     finished_at: {
       type: Date,

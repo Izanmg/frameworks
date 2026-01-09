@@ -1,6 +1,6 @@
 // controllers/taskController.js
 // 🔹 Lògica de negoci per a les tasques (CRUD + estadístiques + imatges)
-// 🔹 Tot amb PROMESES (.then/.catch), sense async/await
+// 🔹 Adaptat per a usuaris i rols
 
 const Task = require("../models/Task");
 
@@ -58,6 +58,7 @@ exports.createTask = (req, res) => {
     hours_real,
     completed,
     image: imageToSave,
+    user: req.user.id, // Assignem la tasca a l'usuari autenticat
   };
 
   Task.create(newTaskData)
@@ -73,10 +74,14 @@ exports.createTask = (req, res) => {
 // 2️⃣ Obtenir totes les tasques
 // GET /api/tasks
 exports.getTasks = (req, res) => {
-  Task.find()
+  // Si és admin, veu totes. Si és user, només les seves.
+  const query = req.user.role === "admin" ? {} : { user: req.user.id };
+
+  Task.find(query)
     .then((tasks) => {
       res.status(200).json({
         success: true,
+        count: tasks.length,
         data: tasks,
       });
     })
@@ -97,6 +102,14 @@ exports.getTaskById = (req, res) => {
         });
       }
 
+      // Verificar propietat (excepte si és admin)
+      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
+        return res.status(403).json({
+          success: false,
+          error: "No tens permís per veure aquesta tasca",
+        });
+      }
+
       res.status(200).json({
         success: true,
         data: task,
@@ -110,10 +123,7 @@ exports.getTaskById = (req, res) => {
 exports.updateTask = (req, res) => {
   const { id } = req.params;
 
-  Task.findByIdAndUpdate(id, req.body, {
-    new: true,
-    runValidators: true,
-  })
+  Task.findById(id)
     .then((task) => {
       if (!task) {
         return res.status(404).json({
@@ -122,10 +132,26 @@ exports.updateTask = (req, res) => {
         });
       }
 
-      res.status(200).json({
-        success: true,
-        data: task,
+      // Verificar propietat
+      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
+        return res.status(403).json({
+          success: false,
+          error: "No tens permís per modificar aquesta tasca",
+        });
+      }
+
+      return Task.findByIdAndUpdate(id, req.body, {
+        new: true,
+        runValidators: true,
       });
+    })
+    .then((updatedTask) => {
+      if (updatedTask) {
+        res.status(200).json({
+          success: true,
+          data: updatedTask,
+        });
+      }
     })
     .catch((error) => handleMongooseError(res, error));
 };
@@ -135,7 +161,7 @@ exports.updateTask = (req, res) => {
 exports.deleteTask = (req, res) => {
   const { id } = req.params;
 
-  Task.findByIdAndDelete(id)
+  Task.findById(id)
     .then((task) => {
       if (!task) {
         return res.status(404).json({
@@ -144,10 +170,23 @@ exports.deleteTask = (req, res) => {
         });
       }
 
-      res.status(200).json({
-        success: true,
-        data: { message: `Tasca amb ID ${id} eliminada correctament` },
-      });
+      // Verificar propietat
+      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
+        return res.status(403).json({
+          success: false,
+          error: "No tens permís per eliminar aquesta tasca",
+        });
+      }
+
+      return Task.findByIdAndDelete(id);
+    })
+    .then((deletedTask) => {
+      if (deletedTask) {
+        res.status(200).json({
+          success: true,
+          data: { message: `Tasca amb ID ${id} eliminada correctament` },
+        });
+      }
     })
     .catch((error) => handleMongooseError(res, error));
 };
@@ -165,11 +204,7 @@ exports.updateTaskImage = (req, res) => {
     });
   }
 
-  Task.findByIdAndUpdate(
-    id,
-    { image: image.trim() },
-    { new: true, runValidators: true }
-  )
+  Task.findById(id)
     .then((task) => {
       if (!task) {
         return res.status(404).json({
@@ -178,10 +213,26 @@ exports.updateTaskImage = (req, res) => {
         });
       }
 
-      res.status(200).json({
-        success: true,
-        data: task,
-      });
+      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
+        return res.status(403).json({
+          success: false,
+          error: "No tens permís per modificar aquesta tasca",
+        });
+      }
+
+      return Task.findByIdAndUpdate(
+        id,
+        { image: image.trim() },
+        { new: true, runValidators: true }
+      );
+    })
+    .then((updatedTask) => {
+      if (updatedTask) {
+        res.status(200).json({
+          success: true,
+          data: updatedTask,
+        });
+      }
     })
     .catch((error) => handleMongooseError(res, error));
 };
@@ -191,11 +242,7 @@ exports.updateTaskImage = (req, res) => {
 exports.resetTaskImageToDefault = (req, res) => {
   const { id } = req.params;
 
-  Task.findByIdAndUpdate(
-    id,
-    { image: DEFAULT_TASK_IMAGE },
-    { new: true, runValidators: true }
-  )
+  Task.findById(id)
     .then((task) => {
       if (!task) {
         return res.status(404).json({
@@ -204,10 +251,26 @@ exports.resetTaskImageToDefault = (req, res) => {
         });
       }
 
-      res.status(200).json({
-        success: true,
-        data: task,
-      });
+      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
+        return res.status(403).json({
+          success: false,
+          error: "No tens permís per modificar aquesta tasca",
+        });
+      }
+
+      return Task.findByIdAndUpdate(
+        id,
+        { image: DEFAULT_TASK_IMAGE },
+        { new: true, runValidators: true }
+      );
+    })
+    .then((updatedTask) => {
+      if (updatedTask) {
+        res.status(200).json({
+          success: true,
+          data: updatedTask,
+        });
+      }
     })
     .catch((error) => handleMongooseError(res, error));
 };
@@ -215,7 +278,10 @@ exports.resetTaskImageToDefault = (req, res) => {
 // 8️⃣ Estadístiques de tasques
 // GET /api/tasks/stats
 exports.getTaskStats = (req, res) => {
-  Task.find()
+  // Si és admin, estadístiques globals. Si és user, només les seves.
+  const query = req.user.role === "admin" ? {} : { user: req.user.id };
+
+  Task.find(query)
     .then((tasks) => {
       const totalTasks = tasks.length;
       const completedTasks = tasks.filter((t) => t.completed).length;
