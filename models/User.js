@@ -21,11 +21,12 @@ const userSchema = new mongoose.Schema(
       required: [true, "La contrasenya és obligatòria"],
       minlength: [6, "La contrasenya ha de tenir almenys 6 caràcters"],
     },
-    role: {
-      type: String,
-      enum: ["user", "admin"],
-      default: "user",
-    },
+    roles: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Role",
+      },
+    ],
   },
   {
     timestamps: true,
@@ -54,6 +55,47 @@ userSchema.methods.comparePassword = function (candidatePassword) {
       resolve(isMatch);
     });
   });
+};
+
+userSchema.methods.addRole = function (roleId) {
+  const exists = this.roles.some((role) => role.toString() === roleId.toString());
+  if (!exists) {
+    this.roles.push(roleId);
+  }
+  return this.save();
+};
+
+userSchema.methods.removeRole = function (roleId) {
+  this.roles = this.roles.filter((role) => role.toString() !== roleId.toString());
+  return this.save();
+};
+
+userSchema.methods.getRoleNames = async function () {
+  await this.populate("roles");
+  return (this.roles || []).map((role) => role.name);
+};
+
+userSchema.methods.getPermissions = async function () {
+  await this.populate({ path: "roles", populate: { path: "permissions" } });
+  const permissions = [];
+  (this.roles || []).forEach((role) => {
+    (role.permissions || []).forEach((perm) => {
+      if (perm && perm.name) {
+        permissions.push(perm.name);
+      }
+    });
+  });
+  return permissions;
+};
+
+userSchema.methods.getEffectivePermissions = async function () {
+  const permissions = await this.getPermissions();
+  return [...new Set(permissions)];
+};
+
+userSchema.methods.hasPermission = async function (permissionName) {
+  const permissions = await this.getEffectivePermissions();
+  return permissions.includes(permissionName);
 };
 
 const User = mongoose.model("User", userSchema);

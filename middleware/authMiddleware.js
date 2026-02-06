@@ -23,9 +23,10 @@ exports.protect = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    
+
     User.findById(decoded.id)
-      .then(user => {
+      .populate("roles")
+      .then(async (user) => {
         if (!user) {
           return res.status(401).json({
             success: false,
@@ -33,9 +34,10 @@ exports.protect = (req, res, next) => {
           });
         }
         req.user = user;
+        req.userRoles = (user.roles || []).map((role) => role.name);
         next();
       })
-      .catch(err => {
+      .catch(() => {
         res.status(500).json({ success: false, error: "Error de servidor" });
       });
   } catch (error) {
@@ -49,7 +51,9 @@ exports.protect = (req, res, next) => {
 // Middleware per restringir l'accés segons el rol
 exports.authorize = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
+    const userRoles = req.userRoles || [];
+    const hasRole = roles.some((role) => userRoles.includes(role));
+    if (!hasRole) {
       return res.status(403).json({
         success: false,
         error: "No tens permisos per accedir a aquest recurs",
@@ -58,4 +62,3 @@ exports.authorize = (...roles) => {
     next();
   };
 };
-

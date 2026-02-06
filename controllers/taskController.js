@@ -1,11 +1,34 @@
 // controllers/taskController.js
-// 🔹 Lògica de negoci per a les tasques (CRUD + estadístiques + imatges)
-// 🔹 Adaptat per a usuaris i rols
+// ?? L�gica de negoci per a les tasques (CRUD + estad�stiques + imatges)
+// ?? Adaptat per permisos granulars
 
 const Task = require("../models/Task");
 
 const DEFAULT_TASK_IMAGE =
   process.env.DEFAULT_TASK_IMAGE || "http://localhost:3000/uploads/default-task.jpg";
+
+function isAdmin(req) {
+  const roles = req.userRoles || [];
+  return roles.includes("admin");
+}
+
+function isUserOnly(req) {
+  const roles = req.userRoles || [];
+  return roles.length === 1 && roles[0] === "user";
+}
+
+function buildChanges(original, updated, fields) {
+  const changes = {};
+  fields.forEach((field) => {
+    const before = original[field];
+    const after = updated[field];
+    if (typeof after === "undefined") return;
+    if (String(before) !== String(after)) {
+      changes[field] = `${before} -> ${after}`;
+    }
+  });
+  return Object.keys(changes).length ? changes : null;
+}
 
 // Helper per gestionar errors de Mongoose de forma consistent
 function handleMongooseError(res, error) {
@@ -14,7 +37,7 @@ function handleMongooseError(res, error) {
   if (error.name === "ValidationError") {
     return res.status(400).json({
       success: false,
-      error: "Dades de tasca no vàlides",
+      error: "Dades de tasca no v�lides",
       details: error.message,
     });
   }
@@ -22,7 +45,7 @@ function handleMongooseError(res, error) {
   if (error.name === "CastError") {
     return res.status(400).json({
       success: false,
-      error: "ID de tasca no vàlid",
+      error: "ID de tasca no v�lid",
     });
   }
 
@@ -32,422 +55,445 @@ function handleMongooseError(res, error) {
   });
 }
 
-// 1️⃣ Crear una nova tasca
+// 1?? Crear una nova tasca
 // POST /api/tasks
-exports.createTask = (req, res) => {
-  const {
-    title,
-    description,
-    cost,
-    hours_estimated,
-    hours_real = 0,
-    completed = false,
-    image,
-  } = req.body;
+exports.createTask = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      cost,
+      hours_estimated,
+      hours_real = 0,
+      completed = false,
+      image,
+    } = req.body;
 
-  const imageToSave =
-    image && typeof image === "string" && image.trim() !== ""
-      ? image.trim()
-      : DEFAULT_TASK_IMAGE;
+    const imageToSave =
+      image && typeof image === "string" && image.trim() !== ""
+        ? image.trim()
+        : DEFAULT_TASK_IMAGE;
 
-  const newTaskData = {
-    title,
-    description,
-    cost,
-    hours_estimated,
-    hours_real,
-    completed,
-    image: imageToSave,
-    user: req.user.id, // Assignem la tasca a l'usuari autenticat
-  };
+    const newTaskData = {
+      title,
+      description,
+      cost,
+      hours_estimated,
+      hours_real,
+      completed,
+      image: imageToSave,
+      user: req.user.id,
+    };
 
-  Task.create(newTaskData)
-    .then((task) => {
-      res.status(201).json({
-        success: true,
-        data: task,
-      });
-    })
-    .catch((error) => handleMongooseError(res, error));
+    const task = await Task.create(newTaskData);
+
+    req.audit.resourceType = "task";
+    req.audit.resource = task._id.toString();
+    req.audit.changes = { created: true, title: task.title };
+
+    return res.status(201).json({
+      success: true,
+      data: task,
+    });
+  } catch (error) {
+    return handleMongooseError(res, error);
+  }
 };
 
-// 2️⃣ Obtenir totes les tasques
+// 2?? Obtenir totes les tasques
 // GET /api/tasks
-exports.getTasks = (req, res) => {
-  // Si és admin, veu totes. Si és user, només les seves.
-  const query = req.user.role === "admin" ? {} : { user: req.user.id };
+exports.getTasks = async (req, res) => {
+  try {
+    const query = isUserOnly(req) ? { user: req.user.id } : {};
+    const tasks = await Task.find(query);
 
-  Task.find(query)
-    .then((tasks) => {
-      res.status(200).json({
-        success: true,
-        count: tasks.length,
-        data: tasks,
-      });
-    })
-    .catch((error) => handleMongooseError(res, error));
+    return res.status(200).json({
+      success: true,
+      count: tasks.length,
+      data: tasks,
+    });
+  } catch (error) {
+    return handleMongooseError(res, error);
+  }
 };
 
-// 3️⃣ Obtenir una tasca per ID
+// 3?? Obtenir una tasca per ID
 // GET /api/tasks/:id
-exports.getTaskById = (req, res) => {
+exports.getTaskById = async (req, res) => {
   const { id } = req.params;
 
-  Task.findById(id)
-    .then((task) => {
-      if (!task) {
-        return res.status(404).json({
-          success: false,
-          error: `Tasca amb ID ${id} no trobada`,
-        });
-      }
-
-      // Verificar propietat (excepte si és admin)
-      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
-        return res.status(403).json({
-          success: false,
-          error: "No tens permís per veure aquesta tasca",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        data: task,
+  try {
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: `Tasca amb ID ${id} no trobada`,
       });
-    })
-    .catch((error) => handleMongooseError(res, error));
+    }
+
+    if (isUserOnly(req) && task.user.toString() !== req.user.id) {
+      req.audit.errorMessage = "No tens perm�s per veure aquesta tasca";
+      return res.status(403).json({
+        success: false,
+        error: "No tens perm�s per veure aquesta tasca",
+      });
+    }
+
+    req.audit.resourceType = "task";
+    req.audit.resource = task._id.toString();
+
+    return res.status(200).json({
+      success: true,
+      data: task,
+    });
+  } catch (error) {
+    return handleMongooseError(res, error);
+  }
 };
 
-// 4️⃣ Actualitzar una tasca completa
+// 4?? Actualitzar una tasca completa
 // PUT /api/tasks/:id
-exports.updateTask = (req, res) => {
+exports.updateTask = async (req, res) => {
   const { id } = req.params;
 
-  Task.findById(id)
-    .then((task) => {
-      if (!task) {
-        return res.status(404).json({
-          success: false,
-          error: `Tasca amb ID ${id} no trobada`,
-        });
-      }
-
-      // Verificar propietat
-      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
-        return res.status(403).json({
-          success: false,
-          error: "No tens permís per modificar aquesta tasca",
-        });
-      }
-
-      return Task.findByIdAndUpdate(id, req.body, {
-        new: true,
-        runValidators: true,
+  try {
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: `Tasca amb ID ${id} no trobada`,
       });
-    })
-    .then((updatedTask) => {
-      if (updatedTask) {
-        res.status(200).json({
-          success: true,
-          data: updatedTask,
-        });
-      }
-    })
-    .catch((error) => handleMongooseError(res, error));
+    }
+
+    if (isUserOnly(req) && task.user.toString() !== req.user.id) {
+      req.audit.errorMessage = "No tens perm�s per modificar aquesta tasca";
+      return res.status(403).json({
+        success: false,
+        error: "No tens perm�s per modificar aquesta tasca",
+      });
+    }
+
+    const original = task.toObject();
+    const updatedTask = await Task.findByIdAndUpdate(id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    req.audit.resourceType = "task";
+    req.audit.resource = id;
+    req.audit.changes = buildChanges(original, updatedTask, Object.keys(req.body));
+
+    return res.status(200).json({
+      success: true,
+      data: updatedTask,
+    });
+  } catch (error) {
+    return handleMongooseError(res, error);
+  }
 };
 
-// 5️⃣ Eliminar una tasca
+// 5?? Eliminar una tasca
 // DELETE /api/tasks/:id
-exports.deleteTask = (req, res) => {
+exports.deleteTask = async (req, res) => {
   const { id } = req.params;
 
-  Task.findById(id)
-    .then((task) => {
-      if (!task) {
-        return res.status(404).json({
-          success: false,
-          error: `Tasca amb ID ${id} no trobada`,
-        });
-      }
+  try {
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: `Tasca amb ID ${id} no trobada`,
+      });
+    }
 
-      // Verificar propietat
-      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
-        return res.status(403).json({
-          success: false,
-          error: "No tens permís per eliminar aquesta tasca",
-        });
-      }
+    if (isUserOnly(req) && task.user.toString() !== req.user.id) {
+      req.audit.errorMessage = "No tens perm�s per eliminar aquesta tasca";
+      return res.status(403).json({
+        success: false,
+        error: "No tens perm�s per eliminar aquesta tasca",
+      });
+    }
 
-      return Task.findByIdAndDelete(id);
-    })
-    .then((deletedTask) => {
-      if (deletedTask) {
-        res.status(200).json({
-          success: true,
-          data: { message: `Tasca amb ID ${id} eliminada correctament` },
-        });
-      }
-    })
-    .catch((error) => handleMongooseError(res, error));
+    await Task.findByIdAndDelete(id);
+
+    req.audit.resourceType = "task";
+    req.audit.resource = id;
+    req.audit.changes = { deleted: true, title: task.title };
+
+    return res.status(200).json({
+      success: true,
+      data: { message: `Tasca amb ID ${id} eliminada correctament` },
+    });
+  } catch (error) {
+    return handleMongooseError(res, error);
+  }
 };
 
-// 6️⃣ Actualitzar només la IMATGE d'una tasca
+// 6?? Actualitzar nom�s la IMATGE d'una tasca
 // PUT /api/tasks/:id/image
-exports.updateTaskImage = (req, res) => {
+exports.updateTaskImage = async (req, res) => {
   const { id } = req.params;
   const { image } = req.body;
 
   if (!image || typeof image !== "string" || image.trim() === "") {
     return res.status(400).json({
       success: false,
-      error: "Cal enviar una URL d'imatge vàlida al camp 'image'",
+      error: "Cal enviar una URL d'imatge v�lida al camp 'image'",
     });
   }
 
-  Task.findById(id)
-    .then((task) => {
-      if (!task) {
-        return res.status(404).json({
-          success: false,
-          error: `Tasca amb ID ${id} no trobada`,
-        });
-      }
+  try {
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: `Tasca amb ID ${id} no trobada`,
+      });
+    }
 
-      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
-        return res.status(403).json({
-          success: false,
-          error: "No tens permís per modificar aquesta tasca",
-        });
-      }
+    if (isUserOnly(req) && task.user.toString() !== req.user.id) {
+      req.audit.errorMessage = "No tens perm�s per modificar aquesta tasca";
+      return res.status(403).json({
+        success: false,
+        error: "No tens perm�s per modificar aquesta tasca",
+      });
+    }
 
-      return Task.findByIdAndUpdate(
-        id,
-        { image: image.trim() },
-        { new: true, runValidators: true }
-      );
-    })
-    .then((updatedTask) => {
-      if (updatedTask) {
-        res.status(200).json({
-          success: true,
-          data: updatedTask,
-        });
-      }
-    })
-    .catch((error) => handleMongooseError(res, error));
+    const original = task.toObject();
+    const updatedTask = await Task.findByIdAndUpdate(
+      id,
+      { image: image.trim() },
+      { new: true, runValidators: true }
+    );
+
+    req.audit.resourceType = "task";
+    req.audit.resource = id;
+    req.audit.changes = buildChanges(original, updatedTask, ["image"]);
+
+    return res.status(200).json({
+      success: true,
+      data: updatedTask,
+    });
+  } catch (error) {
+    return handleMongooseError(res, error);
+  }
 };
 
-// 7️⃣ Restablir imatge per defecte
+// 7?? Restablir imatge per defecte
 // PUT /api/tasks/:id/image/reset
-exports.resetTaskImageToDefault = (req, res) => {
+exports.resetTaskImageToDefault = async (req, res) => {
   const { id } = req.params;
 
-  Task.findById(id)
-    .then((task) => {
-      if (!task) {
-        return res.status(404).json({
-          success: false,
-          error: `Tasca amb ID ${id} no trobada`,
-        });
-      }
+  try {
+    const task = await Task.findById(id);
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: `Tasca amb ID ${id} no trobada`,
+      });
+    }
 
-      if (task.user.toString() !== req.user.id && req.user.role !== "admin") {
-        return res.status(403).json({
-          success: false,
-          error: "No tens permís per modificar aquesta tasca",
-        });
-      }
+    if (isUserOnly(req) && task.user.toString() !== req.user.id) {
+      req.audit.errorMessage = "No tens perm�s per modificar aquesta tasca";
+      return res.status(403).json({
+        success: false,
+        error: "No tens perm�s per modificar aquesta tasca",
+      });
+    }
 
-      return Task.findByIdAndUpdate(
-        id,
-        { image: DEFAULT_TASK_IMAGE },
-        { new: true, runValidators: true }
-      );
-    })
-    .then((updatedTask) => {
-      if (updatedTask) {
-        res.status(200).json({
-          success: true,
-          data: updatedTask,
-        });
-      }
-    })
-    .catch((error) => handleMongooseError(res, error));
+    const original = task.toObject();
+    const updatedTask = await Task.findByIdAndUpdate(
+      id,
+      { image: DEFAULT_TASK_IMAGE },
+      { new: true, runValidators: true }
+    );
+
+    req.audit.resourceType = "task";
+    req.audit.resource = id;
+    req.audit.changes = buildChanges(original, updatedTask, ["image"]);
+
+    return res.status(200).json({
+      success: true,
+      data: updatedTask,
+    });
+  } catch (error) {
+    return handleMongooseError(res, error);
+  }
 };
 
-// 8️⃣ Estadístiques de tasques
+// 8?? Estad�stiques de tasques
 // GET /api/tasks/stats
-exports.getTaskStats = (req, res) => {
-  // Si és admin, estadístiques globals. Si és user, només les seves.
-  const query = req.user.role === "admin" ? {} : { user: req.user.id };
+exports.getTaskStats = async (req, res) => {
+  try {
+    const query = isUserOnly(req) ? { user: req.user.id } : {};
+    const tasks = await Task.find(query);
 
-  Task.find(query)
-    .then((tasks) => {
-      const totalTasks = tasks.length;
-      const completedTasks = tasks.filter((t) => t.completed).length;
-      const pendingTasks = totalTasks - completedTasks;
-      const completionRate =
-        totalTasks === 0
-          ? 0
-          : Number(((completedTasks / totalTasks) * 100).toFixed(2));
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter((t) => t.completed).length;
+    const pendingTasks = totalTasks - completedTasks;
+    const completionRate =
+      totalTasks === 0
+        ? 0
+        : Number(((completedTasks / totalTasks) * 100).toFixed(2));
 
-      // 💰 Costos
-      const totalCost = tasks.reduce((sum, t) => sum + (t.cost || 0), 0);
-      const completedTasksCost = tasks
-        .filter((t) => t.completed)
-        .reduce((sum, t) => sum + (t.cost || 0), 0);
-      const pendingTasksCost = totalCost - completedTasksCost;
+    // ?? Costos
+    const totalCost = tasks.reduce((sum, t) => sum + (t.cost || 0), 0);
+    const completedTasksCost = tasks
+      .filter((t) => t.completed)
+      .reduce((sum, t) => sum + (t.cost || 0), 0);
+    const pendingTasksCost = totalCost - completedTasksCost;
 
-      const averageCostPerTask =
-        totalTasks === 0 ? 0 : Number((totalCost / totalTasks).toFixed(2));
-      const averageCostCompleted =
-        completedTasks === 0
-          ? 0
-          : Number((completedTasksCost / completedTasks).toFixed(2));
-      const averageCostPending =
-        pendingTasks === 0
-          ? 0
-          : Number((pendingTasksCost / pendingTasks).toFixed(2));
+    const averageCostPerTask =
+      totalTasks === 0 ? 0 : Number((totalCost / totalTasks).toFixed(2));
+    const averageCostCompleted =
+      completedTasks === 0
+        ? 0
+        : Number((completedTasksCost / completedTasks).toFixed(2));
+    const averageCostPending =
+      pendingTasks === 0
+        ? 0
+        : Number((pendingTasksCost / pendingTasks).toFixed(2));
 
-      // ⏱ Hores
-      const totalHoursEstimated = tasks.reduce(
-        (sum, t) => sum + (t.hours_estimated || 0),
-        0
-      );
-      const totalHoursReal = tasks.reduce(
-        (sum, t) => sum + (t.hours_real || 0),
-        0
-      );
+    // ? Hores
+    const totalHoursEstimated = tasks.reduce(
+      (sum, t) => sum + (t.hours_estimated || 0),
+      0
+    );
+    const totalHoursReal = tasks.reduce(
+      (sum, t) => sum + (t.hours_real || 0),
+      0
+    );
 
-      const timeEfficiency =
-        totalHoursEstimated === 0
-          ? 0
-          : Number(((totalHoursReal / totalHoursEstimated) * 100).toFixed(2));
+    const timeEfficiency =
+      totalHoursEstimated === 0
+        ? 0
+        : Number(((totalHoursReal / totalHoursEstimated) * 100).toFixed(2));
 
-      const hoursDifference = totalHoursReal - totalHoursEstimated;
-      const hoursOverrun = hoursDifference > 0 ? hoursDifference : 0;
-      const hoursSaved = hoursDifference < 0 ? Math.abs(hoursDifference) : 0;
+    const hoursDifference = totalHoursReal - totalHoursEstimated;
+    const hoursOverrun = hoursDifference > 0 ? hoursDifference : 0;
+    const hoursSaved = hoursDifference < 0 ? Math.abs(hoursDifference) : 0;
 
-      const averageHoursEstimated =
-        totalTasks === 0
-          ? 0
-          : Number((totalHoursEstimated / totalTasks).toFixed(2));
-      const averageHoursReal =
-        totalTasks === 0
-          ? 0
-          : Number((totalHoursReal / totalTasks).toFixed(2));
+    const averageHoursEstimated =
+      totalTasks === 0
+        ? 0
+        : Number((totalHoursEstimated / totalTasks).toFixed(2));
+    const averageHoursReal =
+      totalTasks === 0
+        ? 0
+        : Number((totalHoursReal / totalTasks).toFixed(2));
 
-      // 🕒 Estadístiques temporals (dates)
-      const now = new Date();
-      const startOfToday = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate()
-      );
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    // ?? Estad�stiques temporals (dates)
+    const now = new Date();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      // Inici de setmana (dilluns)
-      const day = startOfToday.getDay(); // 0 = diumenge
-      const diff = (day === 0 ? -6 : 1) - day;
-      const startOfWeek = new Date(startOfToday);
-      startOfWeek.setDate(startOfWeek.getDate() + diff);
+    // Inici de setmana (dilluns)
+    const day = startOfToday.getDay(); // 0 = diumenge
+    const diff = (day === 0 ? -6 : 1) - day;
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() + diff);
 
-      const tasksThisMonth = tasks.filter(
-        (t) => t.createdAt && t.createdAt >= startOfMonth
-      ).length;
-      const tasksThisWeek = tasks.filter(
-        (t) => t.createdAt && t.createdAt >= startOfWeek
-      ).length;
-      const tasksToday = tasks.filter(
-        (t) => t.createdAt && t.createdAt >= startOfToday
-      ).length;
+    const tasksThisMonth = tasks.filter(
+      (t) => t.createdAt && t.createdAt >= startOfMonth
+    ).length;
+    const tasksThisWeek = tasks.filter(
+      (t) => t.createdAt && t.createdAt >= startOfWeek
+    ).length;
+    const tasksToday = tasks.filter(
+      (t) => t.createdAt && t.createdAt >= startOfToday
+    ).length;
 
-      const completedThisMonth = tasks.filter(
-        (t) => t.completed && t.finished_at && t.finished_at >= startOfMonth
-      ).length;
-      const completedThisWeek = tasks.filter(
-        (t) => t.completed && t.finished_at && t.finished_at >= startOfWeek
-      ).length;
-      const completedToday = tasks.filter(
-        (t) => t.completed && t.finished_at && t.finished_at >= startOfToday
-      ).length;
+    const completedThisMonth = tasks.filter(
+      (t) => t.completed && t.finished_at && t.finished_at >= startOfMonth
+    ).length;
+    const completedThisWeek = tasks.filter(
+      (t) => t.completed && t.finished_at && t.finished_at >= startOfWeek
+    ).length;
+    const completedToday = tasks.filter(
+      (t) => t.completed && t.finished_at && t.finished_at >= startOfToday
+    ).length;
 
-      // 📄 Descripció + imatges
-      const tasksWithDescription = tasks.filter(
-        (t) => t.description && t.description.trim() !== ""
-      ).length;
-      const tasksWithoutDescription = totalTasks - tasksWithDescription;
+    // ?? Descripci� + imatges
+    const tasksWithDescription = tasks.filter(
+      (t) => t.description && t.description.trim() !== ""
+    ).length;
+    const tasksWithoutDescription = totalTasks - tasksWithDescription;
 
-      let defaultImages = 0;
-      let customImages = 0;
-      let cloudinaryImages = 0;
-      let localImages = 0;
+    let defaultImages = 0;
+    let customImages = 0;
+    let cloudinaryImages = 0;
+    let localImages = 0;
 
-      tasks.forEach((t) => {
-        const img = t.image;
+    tasks.forEach((t) => {
+      const img = t.image;
 
-        if (!img || img.trim() === "") return;
+      if (!img || img.trim() === "") return;
 
-        if (img === DEFAULT_TASK_IMAGE) {
-          defaultImages++;
-        } else {
-          customImages++;
-          if (img.includes("res.cloudinary.com")) {
-            cloudinaryImages++;
-          }
-          if (img.startsWith("http://localhost:3000/uploads")) {
-            localImages++;
-          }
+      if (img === DEFAULT_TASK_IMAGE) {
+        defaultImages++;
+      } else {
+        customImages++;
+        if (img.includes("res.cloudinary.com")) {
+          cloudinaryImages++;
         }
-      });
+        if (img.startsWith("http://localhost:3000/uploads")) {
+          localImages++;
+        }
+      }
+    });
 
-      return res.status(200).json({
-        success: true,
-        data: {
-          overview: {
-            totalTasks,
-            completedTasks,
-            pendingTasks,
-            completionRate,
-          },
-          financial: {
-            totalCost,
-            completedTasksCost,
-            pendingTasksCost,
-            averageCostPerTask,
-            averageCostCompleted,
-            averageCostPending,
-          },
-          time: {
-            totalHoursEstimated,
-            totalHoursReal,
-            timeEfficiency,
-            averageHoursEstimated,
-            averageHoursReal,
-            hoursDifference,
-            hoursOverrun,
-            hoursSaved,
-          },
-          recent: {
-            tasksThisMonth,
-            completedThisMonth,
-            tasksThisWeek,
-            completedThisWeek,
-            tasksToday,
-            completedToday,
-          },
-          misc: {
-            tasksWithDescription,
-            tasksWithoutDescription,
-            imageStats: {
-              defaultImages,
-              customImages,
-              cloudinaryImages,
-              localImages,
-            },
+    return res.status(200).json({
+      success: true,
+      data: {
+        overview: {
+          totalTasks,
+          completedTasks,
+          pendingTasks,
+          completionRate,
+        },
+        financial: {
+          totalCost,
+          completedTasksCost,
+          pendingTasksCost,
+          averageCostPerTask,
+          averageCostCompleted,
+          averageCostPending,
+        },
+        time: {
+          totalHoursEstimated,
+          totalHoursReal,
+          timeEfficiency,
+          averageHoursEstimated,
+          averageHoursReal,
+          hoursDifference,
+          hoursOverrun,
+          hoursSaved,
+        },
+        recent: {
+          tasksThisMonth,
+          completedThisMonth,
+          tasksThisWeek,
+          completedThisWeek,
+          tasksToday,
+          completedToday,
+        },
+        misc: {
+          tasksWithDescription,
+          tasksWithoutDescription,
+          imageStats: {
+            defaultImages,
+            customImages,
+            cloudinaryImages,
+            localImages,
           },
         },
-      });
-    })
-    .catch((error) => handleMongooseError(res, error));
+      },
+    });
+  } catch (error) {
+    return handleMongooseError(res, error);
+  }
 };

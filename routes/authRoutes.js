@@ -1,9 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/authController");
-const { protect, authorize } = require("../middleware/authMiddleware");
+const { protect } = require("../middleware/authMiddleware");
+const auditMiddleware = require("../middleware/auditMiddleware");
 
-// Rutes públiques
+// Rutes p�bliques
 router.post("/register", authController.register);
 router.post("/login", authController.login);
 
@@ -12,11 +13,12 @@ router.get("/me", protect, authController.getMe);
 router.put("/profile", protect, authController.updateProfile);
 router.put("/change-password", protect, authController.changePassword);
 
-// Rutes d'administració (Només Admin)
-// Nota: He usat /admin/users dins d'aquest fitxer per simplificar, 
-// però en app.js es munta sobre /api/auth, així que la ruta final és /api/auth/admin/users
-router.get("/admin/users", protect, authorize("admin"), authController.getUsers);
-router.delete("/admin/users/:id", protect, authorize("admin"), authController.deleteUser);
-router.put("/admin/users/:id/role", protect, authorize("admin"), authController.changeUserRole);
+// Verificar perm�s
+router.post(
+  "/check-permission",
+  protect,
+  auditMiddleware,
+  authController.checkPermission
+);
 
 module.exports = router;
