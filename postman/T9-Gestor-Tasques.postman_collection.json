@@ -1,28 +1,136 @@
 {
   "info": {
-    "name": "T9 - Gestor de Tasques (51 proves)",
-    "description": "Col·lecció Postman per a la pràctica OP1-B1-NODE-09. Inclou totes les 51 proves descrites al PDF: Autenticació, Usuaris, Rols, Permisos, Delegació, Auditoria, Tasques, Seguretat i Errors.\n\nAutomatitzacions:\n- En el login, guarda accessToken i refreshToken com a variables.\n- En crear recursos, guarda els IDs (USER_ID, ROLE_ID, PERM_ID, DELEG_ID, TASK_ID).",
+    "name": "T9 - Gestor de Tasques (51 proves) - AUTO",
+    "description": "Col·lecció Postman per a la pràctica OP1-B1-NODE-09 amb AUTOMATITZACIÓ COMPLETA.\n\nNomés has de prémer SEND. Els scripts pre-request preparen automàticament tot el que cada petició necessita (tokens, IDs, recursos temporals).\n\nInclou les 51 proves: Autenticació (7), Usuaris (5), Rols (8), Permisos (6), Delegació (6), Auditoria (5), Tasques (5), Seguretat (5), Errors (4).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_postman_id": "t9-gestor-tasques-2026"
+    "_postman_id": "t9-gestor-tasques-2026-auto"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
     { "key": "email", "value": "admin@example.com", "type": "string" },
     { "key": "password", "value": "Admin123!", "type": "string" },
+    { "key": "joanEmail", "value": "joan@example.com", "type": "string" },
+    { "key": "joanPassword", "value": "Password123!", "type": "string" },
     { "key": "accessToken", "value": "", "type": "string" },
     { "key": "refreshToken", "value": "", "type": "string" },
     { "key": "ACCESS_TOKEN_ADMIN", "value": "", "type": "string" },
-    { "key": "ACCESS_TOKEN_MANAGER", "value": "", "type": "string" },
     { "key": "ACCESS_TOKEN_USER", "value": "", "type": "string" },
     { "key": "ACCESS_TOKEN_EXPIRAT", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJkdW1teSIsImlhdCI6MTAwMCwiZXhwIjoyMDAwfQ.invalid", "type": "string" },
     { "key": "USER_ID", "value": "", "type": "string" },
-    { "key": "USER_ID_OTHER", "value": "", "type": "string" },
+    { "key": "USER_ID_TEMP", "value": "", "type": "string" },
     { "key": "ROLE_ID", "value": "", "type": "string" },
+    { "key": "ROLE_ID_TEMP", "value": "", "type": "string" },
     { "key": "ROLE_ID_SUPERIOR", "value": "", "type": "string" },
     { "key": "PERM_ID", "value": "", "type": "string" },
+    { "key": "PERM_ID_TEMP", "value": "", "type": "string" },
     { "key": "DELEG_ID", "value": "", "type": "string" },
     { "key": "TASK_ID", "value": "", "type": "string" },
     { "key": "RESET_TOKEN", "value": "", "type": "string" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request global: prepara tokens i IDs perquè qualsevol petició funcioni amb un sol Send.",
+          "const baseUrl = pm.collectionVariables.get('baseUrl');",
+          "const adminEmail = pm.collectionVariables.get('email');",
+          "const adminPwd = pm.collectionVariables.get('password');",
+          "const joanEmail = pm.collectionVariables.get('joanEmail');",
+          "const joanPwd = pm.collectionVariables.get('joanPassword');",
+          "",
+          "function loginUser(email, pwd, cb) {",
+          "  pm.sendRequest({",
+          "    url: baseUrl + '/api/auth/login',",
+          "    method: 'POST',",
+          "    header: { 'Content-Type': 'application/json' },",
+          "    body: { mode: 'raw', raw: JSON.stringify({ email: email, password: pwd }) }",
+          "  }, function (err, res) {",
+          "    if (!err && res && res.code === 200) {",
+          "      try { cb(res.json().data); } catch (e) { cb(null); }",
+          "    } else { cb(null); }",
+          "  });",
+          "}",
+          "",
+          "function ensureJoan(cb) {",
+          "  loginUser(joanEmail, joanPwd, function (joan) {",
+          "    if (joan) {",
+          "      pm.collectionVariables.set('USER_ID', joan.user.id);",
+          "      pm.collectionVariables.set('ACCESS_TOKEN_USER', joan.accessToken);",
+          "      return cb();",
+          "    }",
+          "    pm.sendRequest({",
+          "      url: baseUrl + '/api/auth/register',",
+          "      method: 'POST',",
+          "      header: { 'Content-Type': 'application/json' },",
+          "      body: { mode: 'raw', raw: JSON.stringify({ email: joanEmail, password: joanPwd, firstName: 'Joan', lastName: 'Garcia' }) }",
+          "    }, function (e2, r2) {",
+          "      if (!e2 && r2 && (r2.code === 201 || r2.code === 200)) {",
+          "        try {",
+          "          var d = r2.json().data;",
+          "          if (d && d.user) pm.collectionVariables.set('USER_ID', d.user.id);",
+          "          if (d && d.accessToken) pm.collectionVariables.set('ACCESS_TOKEN_USER', d.accessToken);",
+          "        } catch (e) {}",
+          "      }",
+          "      cb();",
+          "    });",
+          "  });",
+          "}",
+          "",
+          "function ensureRoles(cb) {",
+          "  pm.sendRequest({",
+          "    url: baseUrl + '/api/roles',",
+          "    method: 'GET',",
+          "    header: { 'Authorization': 'Bearer ' + pm.collectionVariables.get('ACCESS_TOKEN_ADMIN') }",
+          "  }, function (err, res) {",
+          "    if (!err && res && res.code === 200) {",
+          "      try {",
+          "        var list = res.json().data || [];",
+          "        var u = list.find(function (r) { return r.name === 'user'; });",
+          "        var a = list.find(function (r) { return r.name === 'admin'; });",
+          "        if (u) pm.collectionVariables.set('ROLE_ID', u.id);",
+          "        if (a) pm.collectionVariables.set('ROLE_ID_SUPERIOR', a.id);",
+          "      } catch (e) {}",
+          "    }",
+          "    cb();",
+          "  });",
+          "}",
+          "",
+          "function ensurePerm(cb) {",
+          "  pm.sendRequest({",
+          "    url: baseUrl + '/api/permissions',",
+          "    method: 'GET',",
+          "    header: { 'Authorization': 'Bearer ' + pm.collectionVariables.get('ACCESS_TOKEN_ADMIN') }",
+          "  }, function (err, res) {",
+          "    if (!err && res && res.code === 200) {",
+          "      try {",
+          "        var list = res.json().data || [];",
+          "        if (Array.isArray(list) && list.length > 0) {",
+          "          pm.collectionVariables.set('PERM_ID', list[0].id);",
+          "        }",
+          "      } catch (e) {}",
+          "    }",
+          "    cb();",
+          "  });",
+          "}",
+          "",
+          "// Sempre fa login d'admin (renova tokens encara que algun test anterior els hagi revocats)",
+          "loginUser(adminEmail, adminPwd, function (admin) {",
+          "  if (admin) {",
+          "    pm.collectionVariables.set('ACCESS_TOKEN_ADMIN', admin.accessToken);",
+          "    pm.collectionVariables.set('accessToken', admin.accessToken);",
+          "    pm.collectionVariables.set('refreshToken', admin.refreshToken);",
+          "  }",
+          "  ensureJoan(function () {",
+          "    ensureRoles(function () {",
+          "      ensurePerm(function () {});",
+          "    });",
+          "  });",
+          "});"
+        ]
+      }
+    }
   ],
   "item": [
     {
@@ -43,17 +151,17 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "const r = pm.response.json();",
                   "if (r && r.data) {",
                   "  if (r.data.user && r.data.user.id) pm.collectionVariables.set('USER_ID', r.data.user.id);",
                   "  if (r.data.accessToken) pm.collectionVariables.set('ACCESS_TOKEN_USER', r.data.accessToken);",
                   "}",
-                  "pm.test('201 o 400 (si ja existeix)', function () {",
+                  "pm.test('201 (creat) o 400 (ja existeix)', function () {",
                   "  pm.expect([201, 400]).to.include(pm.response.code);",
                   "});"
-                ],
-                "type": "text/javascript"
+                ]
               }
             }
           ]
@@ -66,13 +174,14 @@
             "url": "{{baseUrl}}/api/auth/login",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"Admin123!\"\n}"
             }
           },
           "event": [
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
                   "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
@@ -81,8 +190,7 @@
                   "pm.collectionVariables.set('accessToken', r.data.accessToken);",
                   "pm.collectionVariables.set('refreshToken', r.data.refreshToken);",
                   "pm.collectionVariables.set('ACCESS_TOKEN_ADMIN', r.data.accessToken);"
-                ],
-                "type": "text/javascript"
+                ]
               }
             }
           ]
@@ -99,7 +207,7 @@
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('401', () => pm.response.to.have.status(401));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('401 Unauthorized', function () { pm.response.to.have.status(401); });" ] } }
           ]
         },
         {
@@ -117,8 +225,9 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "pm.expect(r.data.accessToken).to.be.a('string');",
                   "pm.collectionVariables.set('accessToken', r.data.accessToken);"
@@ -142,7 +251,7 @@
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('200 OK', () => pm.response.to.have.status(200));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
           ]
         },
         {
@@ -160,8 +269,9 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "if (r.devToken) pm.collectionVariables.set('RESET_TOKEN', r.devToken);"
                 ]
@@ -177,11 +287,34 @@
             "url": "{{baseUrl}}/api/auth/reset-password/{{RESET_TOKEN}}",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"newPassword\": \"NovaPassword123!\"\n}"
+              "raw": "{\n  \"newPassword\": \"Password123!\"\n}"
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('200 OK o 400', () => pm.expect([200,400]).to.include(pm.response.code));" ] } }
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Genera un RESET_TOKEN nou abans del test (els tokens són d'un sol ús)",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/auth/forgot-password',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ email: pm.collectionVariables.get('joanEmail') }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && res.code === 200) {",
+                  "    try {",
+                  "      const r = res.json();",
+                  "      if (r.devToken) pm.collectionVariables.set('RESET_TOKEN', r.devToken);",
+                  "    } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
           ]
         }
       ]
@@ -195,7 +328,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/users"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "2.2 Obtenir Usuari per ID",
@@ -203,7 +339,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/users/{{USER_ID}}"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "2.3 Actualitzar Usuari",
@@ -218,7 +357,10 @@
               "mode": "raw",
               "raw": "{\n  \"firstName\": \"Joan\",\n  \"lastName\": \"Garcia Actualitzat\"\n}"
             }
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "2.4 Obtenir Permisos de l'Usuari",
@@ -226,15 +368,45 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/users/{{USER_ID}}/permissions"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "2.5 Esborrar Usuari (Admin)",
           "request": {
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
-            "url": "{{baseUrl}}/api/users/{{USER_ID}}"
-          }
+            "url": "{{baseUrl}}/api/users/{{USER_ID_TEMP}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Crea un usuari temporal per eliminar (no esborrar mai joan o admin)",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const ts = Date.now();",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/auth/register',",
+                  "  method: 'POST',",
+                  "  header: { 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ email: 'temp_' + ts + '@example.com', password: 'Temporal123!', firstName: 'Temp', lastName: 'User' }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && res.code === 201) {",
+                  "    try {",
+                  "      const d = res.json().data;",
+                  "      if (d && d.user) pm.collectionVariables.set('USER_ID_TEMP', d.user.id);",
+                  "    } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         }
       ]
     },
@@ -252,13 +424,15 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "if (r.data) {",
-                  "  const user = r.data.find(x => x.name === 'user');",
-                  "  const admin = r.data.find(x => x.name === 'admin');",
-                  "  if (user) pm.collectionVariables.set('ROLE_ID', user.id);",
-                  "  if (admin) pm.collectionVariables.set('ROLE_ID_SUPERIOR', admin.id);",
+                  "  const u = r.data.find(function (x) { return x.name === 'user'; });",
+                  "  const a = r.data.find(function (x) { return x.name === 'admin'; });",
+                  "  if (u) pm.collectionVariables.set('ROLE_ID', u.id);",
+                  "  if (a) pm.collectionVariables.set('ROLE_ID_SUPERIOR', a.id);",
                   "}"
                 ]
               }
@@ -271,7 +445,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "3.3 Crear Rol (Admin)",
@@ -289,11 +466,43 @@
           },
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Si ja existeix el rol 'editor', l'esborrem perquè la creació funcioni",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/roles',",
+                  "  method: 'GET',",
+                  "  header: { 'Authorization': 'Bearer ' + token }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && res.code === 200) {",
+                  "    try {",
+                  "      const list = res.json().data || [];",
+                  "      const editor = list.find(function (r) { return r.name === 'editor'; });",
+                  "      if (editor) {",
+                  "        pm.sendRequest({",
+                  "          url: baseUrl + '/api/roles/' + editor.id,",
+                  "          method: 'DELETE',",
+                  "          header: { 'Authorization': 'Bearer ' + token }",
+                  "        }, function () {});",
+                  "      }",
+                  "    } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
                   "const r = pm.response.json();",
-                  "if (r.data && r.data.id) pm.collectionVariables.set('ROLE_ID', r.data.id);"
+                  "if (r.data && r.data.id) pm.collectionVariables.set('ROLE_ID_TEMP', r.data.id);"
                 ]
               }
             }
@@ -307,12 +516,38 @@
               { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
               { "key": "Content-Type", "value": "application/json" }
             ],
-            "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}",
+            "url": "{{baseUrl}}/api/roles/{{ROLE_ID_TEMP}}",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"description\": \"Editor actualitzat de tasques\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Si no hi ha ROLE_ID_TEMP, en creem un nou",
+                  "if (pm.collectionVariables.get('ROLE_ID_TEMP')) return;",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "const parent = pm.collectionVariables.get('ROLE_ID_SUPERIOR');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/roles',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ name: 'editor_temp_' + Date.now(), level: 2, parentRole: parent, description: 'Temp' }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && res.code === 201) {",
+                  "    try { const d = res.json().data; if (d && d.id) pm.collectionVariables.set('ROLE_ID_TEMP', d.id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "3.5 Obtenir Jerarquia de Rol",
@@ -320,7 +555,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}/hierarchy"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "3.6 Obtenir Permisos Heretats d'un Rol",
@@ -328,18 +566,46 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}/permissions"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "3.7 Esborrar Rol (Admin)",
           "request": {
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
-            "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}"
-          }
+            "url": "{{baseUrl}}/api/roles/{{ROLE_ID_TEMP}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Crea sempre un rol temporal nou per esborrar (no esborrar mai rols del sistema)",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "const parent = pm.collectionVariables.get('ROLE_ID_SUPERIOR');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/roles',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ name: 'editor_del_' + Date.now(), level: 2, parentRole: parent, description: 'A esborrar' }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && res.code === 201) {",
+                  "    try { const d = res.json().data; if (d && d.id) pm.collectionVariables.set('ROLE_ID_TEMP', d.id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
-          "name": "3.8 Validar Jerarquia (Error - level superior al pare)",
+          "name": "3.8 Validar Jerarquia (Error - level invàlid)",
           "request": {
             "method": "POST",
             "header": [
@@ -353,7 +619,7 @@
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });" ] } }
           ]
         }
       ]
@@ -372,7 +638,9 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
                   "const r = pm.response.json();",
                   "if (r.data && Array.isArray(r.data) && r.data[0]) {",
                   "  pm.collectionVariables.set('PERM_ID', r.data[0].id);",
@@ -388,7 +656,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/permissions/{{PERM_ID}}"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "4.3 Crear Permís (Admin)",
@@ -406,11 +677,43 @@
           },
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Si ja existeix 'tasks:archive', l'esborrem abans de crear-lo de nou",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/permissions',",
+                  "  method: 'GET',",
+                  "  header: { 'Authorization': 'Bearer ' + token }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && res.code === 200) {",
+                  "    try {",
+                  "      const list = res.json().data || [];",
+                  "      const found = list.find(function (p) { return p.name === 'tasks:archive'; });",
+                  "      if (found) {",
+                  "        pm.sendRequest({",
+                  "          url: baseUrl + '/api/permissions/' + found.id,",
+                  "          method: 'DELETE',",
+                  "          header: { 'Authorization': 'Bearer ' + token }",
+                  "        }, function () {});",
+                  "      }",
+                  "    } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
                   "const r = pm.response.json();",
-                  "if (r.data && r.data.id) pm.collectionVariables.set('PERM_ID', r.data.id);"
+                  "if (r.data && r.data.id) pm.collectionVariables.set('PERM_ID_TEMP', r.data.id);"
                 ]
               }
             }
@@ -424,20 +727,69 @@
               { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
               { "key": "Content-Type", "value": "application/json" }
             ],
-            "url": "{{baseUrl}}/api/permissions/{{PERM_ID}}",
+            "url": "{{baseUrl}}/api/permissions/{{PERM_ID_TEMP}}",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"description\": \"Arxivar tasques (actualitzat)\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Assegura un permís temporal per actualitzar",
+                  "if (pm.collectionVariables.get('PERM_ID_TEMP')) return;",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/permissions',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ name: 'tasks:archive_temp_' + Date.now(), description: 'Temp', category: 'tasks' }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && res.code === 201) {",
+                  "    try { const d = res.json().data; if (d && d.id) pm.collectionVariables.set('PERM_ID_TEMP', d.id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "4.5 Esborrar Permís (Admin)",
           "request": {
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
-            "url": "{{baseUrl}}/api/permissions/{{PERM_ID}}"
-          }
+            "url": "{{baseUrl}}/api/permissions/{{PERM_ID_TEMP}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Crea sempre un permís temporal nou per esborrar",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/permissions',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ name: 'tasks:archive_del_' + Date.now(), description: 'Temp', category: 'tasks' }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && res.code === 201) {",
+                  "    try { const d = res.json().data; if (d && d.id) pm.collectionVariables.set('PERM_ID_TEMP', d.id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "4.6 Error - Crear Permís Duplicat",
@@ -454,7 +806,7 @@
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });" ] } }
           ]
         }
       ]
@@ -468,7 +820,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/delegations"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "5.2 Obtenir Delegació per ID",
@@ -476,7 +831,32 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/delegations/{{DELEG_ID}}"
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Crea una delegació activa fresca per a aquesta prova",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "const userId = pm.collectionVariables.get('USER_ID');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/delegations',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ toUserId: userId, permission: 'tasks:assign', reason: 'Setup automàtic', daysValid: 5 }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && (res.code === 201 || res.code === 200)) {",
+                  "    try { const d = res.json().data; if (d && d.id) pm.collectionVariables.set('DELEG_ID', d.id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "5.3 Crear Delegació",
@@ -496,7 +876,9 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
                   "const r = pm.response.json();",
                   "if (r.data && r.data.id) pm.collectionVariables.set('DELEG_ID', r.data.id);"
                 ]
@@ -510,7 +892,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/delegations/user/{{USER_ID}}"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "5.5 Revocar Delegació",
@@ -518,7 +903,32 @@
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/delegations/{{DELEG_ID}}"
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Crea una delegació activa fresca per revocar",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "const userId = pm.collectionVariables.get('USER_ID');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/delegations',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ toUserId: userId, permission: 'tasks:review', reason: 'Per revocar', daysValid: 3 }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && (res.code === 201 || res.code === 200)) {",
+                  "    try { const d = res.json().data; if (d && d.id) pm.collectionVariables.set('DELEG_ID', d.id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "5.6 Error - Delegació Invàlida (daysValid negatiu)",
@@ -535,7 +945,7 @@
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });" ] } }
           ]
         }
       ]
@@ -549,15 +959,21 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/audit/logs"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "6.2 Filtrar Logs per Acció",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
-            "url": "{{baseUrl}}/api/audit/logs?action=tasks:update"
-          }
+            "url": "{{baseUrl}}/api/audit/logs?action=auth:login"
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "6.3 Filtrar Logs per Usuari",
@@ -565,7 +981,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/audit/logs?userId={{USER_ID}}"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "6.4 Obtenir Estadístiques d'Auditoria",
@@ -573,7 +992,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/audit/stats"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "6.5 Exportar Logs d'Auditoria (CSV)",
@@ -581,7 +1003,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/audit/export?format=csv"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         }
       ]
     },
@@ -606,7 +1031,9 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
+                  "pm.test('201 Created', function () { pm.response.to.have.status(201); });",
                   "const r = pm.response.json();",
                   "if (r.data && r.data._id) pm.collectionVariables.set('TASK_ID', r.data._id);"
                 ]
@@ -620,7 +1047,10 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/tasks?page=1&limit=10"
-          }
+          },
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "7.3 Actualitzar Tasca (Amb Canvis en Auditoria)",
@@ -635,7 +1065,31 @@
               "mode": "raw",
               "raw": "{\n  \"title\": \"Tasca actualitzada\",\n  \"completed\": true\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Assegura una tasca existent per actualitzar",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/tasks',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ title: 'Tasca temp ' + Date.now(), description: 'Auto', cost: 50, hours_estimated: 4 }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && (res.code === 201 || res.code === 200)) {",
+                  "    try { const d = res.json().data; if (d && d._id) pm.collectionVariables.set('TASK_ID', d._id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "7.4 Obtenir Tasca per ID",
@@ -643,7 +1097,31 @@
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/tasks/{{TASK_ID}}"
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Assegura una tasca existent per obtenir",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/tasks',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ title: 'Tasca get ' + Date.now(), description: 'Auto', cost: 30, hours_estimated: 2 }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && (res.code === 201 || res.code === 200)) {",
+                  "    try { const d = res.json().data; if (d && d._id) pm.collectionVariables.set('TASK_ID', d._id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         },
         {
           "name": "7.5 Esborrar Tasca (Amb Auditoria)",
@@ -651,7 +1129,31 @@
             "method": "DELETE",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
             "url": "{{baseUrl}}/api/tasks/{{TASK_ID}}"
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Crea sempre una tasca nova per esborrar",
+                  "const baseUrl = pm.collectionVariables.get('baseUrl');",
+                  "const token = pm.collectionVariables.get('ACCESS_TOKEN_ADMIN');",
+                  "pm.sendRequest({",
+                  "  url: baseUrl + '/api/tasks',",
+                  "  method: 'POST',",
+                  "  header: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },",
+                  "  body: { mode: 'raw', raw: JSON.stringify({ title: 'Tasca del ' + Date.now(), description: 'A esborrar', cost: 10, hours_estimated: 1 }) }",
+                  "}, function (err, res) {",
+                  "  if (!err && res && (res.code === 201 || res.code === 200)) {",
+                  "    try { const d = res.json().data; if (d && d._id) pm.collectionVariables.set('TASK_ID', d._id); } catch (e) {}",
+                  "  }",
+                  "});"
+                ]
+              }
+            },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('200 OK', function () { pm.response.to.have.status(200); });" ] } }
+          ]
         }
       ]
     },
@@ -665,7 +1167,7 @@
             "url": "{{baseUrl}}/api/tasks"
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('401', () => pm.response.to.have.status(401));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('401 Unauthorized', function () { pm.response.to.have.status(401); });" ] } }
           ]
         },
         {
@@ -676,7 +1178,7 @@
             "url": "{{baseUrl}}/api/tasks"
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('401', () => pm.response.to.have.status(401));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('401 Unauthorized', function () { pm.response.to.have.status(401); });" ] } }
           ]
         },
         {
@@ -687,7 +1189,7 @@
             "url": "{{baseUrl}}/api/tasks"
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('401', () => pm.response.to.have.status(401));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('401 Unauthorized', function () { pm.response.to.have.status(401); });" ] } }
           ]
         },
         {
@@ -701,15 +1203,15 @@
             "url": "{{baseUrl}}/api/roles",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"test\",\n  \"level\": 1\n}"
+              "raw": "{\n  \"name\": \"test_no_perm\",\n  \"level\": 1\n}"
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('403 Forbidden', () => pm.response.to.have.status(403));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('403 Forbidden', function () { pm.response.to.have.status(403); });" ] } }
           ]
         },
         {
-          "name": "8.5 Rate Limiting (Massa Peticions)",
+          "name": "8.5 Rate Limiting (Capçaleres X-RateLimit)",
           "request": {
             "method": "GET",
             "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_USER}}" }],
@@ -719,11 +1221,13 @@
             {
               "listen": "test",
               "script": {
+                "type": "text/javascript",
                 "exec": [
-                  "// Per obtenir 429 cal fer 101+ peticions en menys d'un minut.",
-                  "// Aquest test només comprova que els headers X-RateLimit-* hi siguin.",
-                  "pm.test('Capçalera X-RateLimit-Limit existeix', () => {",
+                  "pm.test('Capçalera X-RateLimit-Limit existeix', function () {",
                   "  pm.expect(pm.response.headers.get('X-RateLimit-Limit')).to.not.be.null;",
+                  "});",
+                  "pm.test('Capçalera X-RateLimit-Remaining existeix', function () {",
+                  "  pm.expect(pm.response.headers.get('X-RateLimit-Remaining')).to.not.be.null;",
                   "});"
                 ]
               }
@@ -747,7 +1251,7 @@
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('400', () => pm.response.to.have.status(400));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });" ] } }
           ]
         },
         {
@@ -762,7 +1266,7 @@
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('400', () => pm.response.to.have.status(400));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });" ] } }
           ]
         },
         {
@@ -773,11 +1277,11 @@
             "url": "{{baseUrl}}/api/auth/register",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"Password123!\",\n  \"firstName\": \"Joan\",\n  \"lastName\": \"Garcia\"\n}"
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"Password123!\",\n  \"firstName\": \"Admin\",\n  \"lastName\": \"Duplicat\"\n}"
             }
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('400', () => pm.response.to.have.status(400));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('400 Bad Request', function () { pm.response.to.have.status(400); });" ] } }
           ]
         },
         {
@@ -788,7 +1292,7 @@
             "url": "{{baseUrl}}/api/tasks/000000000000000000000000"
           },
           "event": [
-            { "listen": "test", "script": { "exec": [ "pm.test('404', () => pm.response.to.have.status(404));" ] } }
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('404 Not Found', function () { pm.response.to.have.status(404); });" ] } }
           ]
         }
       ]
