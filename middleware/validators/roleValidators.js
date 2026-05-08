@@ -1,3 +1,6 @@
+// middleware/validators/roleValidators.js
+// Validadors d'entrada per a la gesti√≥ de rols (T9 - amb level i parentRole)
+
 const { body } = require("express-validator");
 const Role = require("../../models/Role");
 
@@ -5,41 +8,37 @@ const createRoleValidators = [
   body("name")
     .trim()
     .notEmpty()
-    .withMessage("El nom del rol Ès obligatori")
+    .withMessage("El nom del rol √©s obligatori")
     .custom(async (value) => {
-      const exists = await Role.findOne({ name: value });
+      const exists = await Role.findOne({ name: value.toLowerCase() });
       if (exists) {
         throw new Error("Ja existeix un rol amb aquest nom");
       }
       return true;
     }),
-  body("description")
-    .trim()
-    .notEmpty()
-    .withMessage("La descripciÛ Ès obligatÚria"),
-  body("permissions")
-    .isArray({ min: 1 })
-    .withMessage("Has d'indicar almenys un permÌs"),
-];
-
-const updateRoleValidators = [
-  body("name")
-    .optional()
-    .trim()
-    .notEmpty()
-    .withMessage("El nom del rol no pot estar buit"),
-  body("description")
-    .optional()
-    .trim()
-    .notEmpty()
-    .withMessage("La descripciÛ no pot estar buida"),
+  body("level")
+    .isInt({ min: 1, max: 10 })
+    .withMessage("level ha de ser un nombre entre 1 i 10"),
+  body("parentRole")
+    .optional({ nullable: true })
+    .isMongoId()
+    .withMessage("parentRole ha de ser un ObjectId v√†lid"),
+  body("description").optional().isString(),
   body("permissions")
     .optional()
-    .isArray({ min: 1 })
+    .isArray()
     .withMessage("Els permisos han de ser un array"),
 ];
 
-module.exports = {
-  createRoleValidators,
-  updateRoleValidators,
-};
+const updateRoleValidators = [
+  body("name").optional().trim().notEmpty(),
+  body("description").optional().isString(),
+  body("level").optional().isInt({ min: 1, max: 10 }),
+  body("parentRole")
+    .optional({ nullable: true })
+    .custom((v) => v === null || /^[0-9a-fA-F]{24}$/.test(v))
+    .withMessage("parentRole ha de ser un ObjectId v√†lid o null"),
+  body("permissions").optional().isArray(),
+];
+
+module.exports = { createRoleValidators, updateRoleValidators };

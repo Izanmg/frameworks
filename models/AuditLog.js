@@ -1,49 +1,64 @@
+// models/AuditLog.js
+// Auditoria avançada (T9): registra qui, què, quan, on, canvis i durada.
+
 const mongoose = require("mongoose");
 
-const auditLogSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
+const auditLogSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    action: {
+      type: String,
+      required: true,
+      index: true,
+    },
+    resource: {
+      type: String,
+      default: "",
+    },
+    resourceType: {
+      type: String,
+      default: "",
+      index: true,
+    },
+    status: {
+      type: String,
+      enum: ["success", "error"],
+      required: true,
+      index: true,
+    },
+    changes: {
+      type: Object,
+      default: null,
+    },
+    errorMessage: {
+      type: String,
+      default: "",
+    },
+    ipAddress: {
+      type: String,
+      default: "",
+    },
+    userAgent: {
+      type: String,
+      default: "",
+    },
+    duration: {
+      type: Number,
+      default: 0,
+    },
+    timestamp: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
   },
-  action: {
-    type: String,
-    required: true,
-  },
-  resource: {
-    type: String,
-    default: "",
-  },
-  resourceType: {
-    type: String,
-    default: "",
-  },
-  status: {
-    type: String,
-    enum: ["success", "error"],
-    required: true,
-  },
-  changes: {
-    type: Object,
-    default: null,
-  },
-  errorMessage: {
-    type: String,
-    default: "",
-  },
-  ipAddress: {
-    type: String,
-    default: "",
-  },
-  userAgent: {
-    type: String,
-    default: "",
-  },
-  timestamp: {
-    type: Date,
-    default: Date.now,
-  },
-});
+  { timestamps: false }
+);
 
 auditLogSchema.statics.log = function (
   userId,
@@ -53,9 +68,12 @@ auditLogSchema.statics.log = function (
   status,
   changes,
   req,
-  errorMessage
+  errorMessage,
+  duration
 ) {
-  const ipAddress = req ? req.ip || req.headers["x-forwarded-for"] || "" : "";
+  const ipAddress = req
+    ? req.ip || req.headers["x-forwarded-for"] || ""
+    : "";
   const userAgent = req ? req.headers["user-agent"] || "" : "";
 
   return this.create({
@@ -68,6 +86,7 @@ auditLogSchema.statics.log = function (
     errorMessage: errorMessage || "",
     ipAddress,
     userAgent,
+    duration: duration || 0,
     timestamp: new Date(),
   });
 };
@@ -89,6 +108,7 @@ auditLogSchema.statics.getByAction = function (action, limit = 20, skip = 0) {
 auditLogSchema.statics.getStats = async function () {
   const totalActions = await this.countDocuments();
   const successCount = await this.countDocuments({ status: "success" });
+  const errorCount = await this.countDocuments({ status: "error" });
   const successRate =
     totalActions === 0
       ? 0
@@ -97,14 +117,14 @@ auditLogSchema.statics.getStats = async function () {
   const topActions = await this.aggregate([
     { $group: { _id: "$action", count: { $sum: 1 } } },
     { $sort: { count: -1 } },
-    { $limit: 5 },
+    { $limit: 10 },
     { $project: { _id: 0, action: "$_id", count: 1 } },
   ]);
 
   const topUsers = await this.aggregate([
     { $group: { _id: "$userId", count: { $sum: 1 } } },
     { $sort: { count: -1 } },
-    { $limit: 5 },
+    { $limit: 10 },
     {
       $lookup: {
         from: "users",
@@ -118,7 +138,8 @@ auditLogSchema.statics.getStats = async function () {
       $project: {
         _id: 0,
         userId: "$_id",
-        userName: "$user.name",
+        userEmail: "$user.email",
+        userName: { $concat: ["$user.firstName", " ", "$user.lastName"] },
         count: 1,
       },
     },
@@ -133,7 +154,7 @@ auditLogSchema.statics.getStats = async function () {
       },
     },
     { $sort: { count: -1 } },
-    { $limit: 5 },
+    { $limit: 10 },
     {
       $project: {
         _id: 0,
@@ -144,15 +165,39 @@ auditLogSchema.statics.getStats = async function () {
     },
   ]);
 
+  const avgDuration = await this.aggregate([
+    { $group: { _id: null, avg: { $avg: "$duration" } } },
+  ]);
+
   return {
     totalActions,
+    successCount,
+    errorCount,
     successRate,
+    avgDurationMs: avgDuration.length
+      ? Number(avgDuration[0].avg.toFixed(2))
+      : 0,
     topActions,
     topUsers,
     recentErrors,
   };
 };
 
-const AuditLog = mongoose.model("AuditLog", auditLogSchema);
+auditLogSchema.statics.getStatsForUser = async function (userId) {
+  const total = await this.countDocuments({ userId });
+  const successCount = await this.countDocuments({
+    userId,
+    status: "success",
+  });
+  const errorCount = await this.countDocuments({ userId, status: "error" });
+  const topActions = await this.aggregate([
+    { $match: { userId: new mongoose.Types.ObjectId(String(userId)) } },
+    { $group: { _id: "$action", count: { $sum: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 10 },
+    { $project: { _id: 0, action: "$_id", count: 1 } },
+  ]);
+  return { total, successCount, errorCount, topActions };
+};
 
-module.exports = AuditLog;
+module.exports = mongoose.model("AuditLog", auditLogSchema);

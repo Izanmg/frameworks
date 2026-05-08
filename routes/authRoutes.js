@@ -1,24 +1,40 @@
+// routes/authRoutes.js
+// Rutes d'autenticaciÃ³ (T9): register, login, refresh, logout, forgot/reset password
+
 const express = require("express");
 const router = express.Router();
+
 const authController = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 const auditMiddleware = require("../middleware/auditMiddleware");
+const handleValidation = require("../middleware/validators/handleValidation");
+const {
+  registerValidators,
+  loginValidators,
+  refreshValidators,
+  forgotPasswordValidators,
+  resetPasswordValidators,
+} = require("../middleware/validators/authValidators");
 
-// Rutes públiques
-router.post("/register", authController.register);
-router.post("/login", authController.login);
-
-// Rutes de perfil (Usuari loguejat)
-router.get("/me", protect, authController.getMe);
-router.put("/profile", protect, authController.updateProfile);
-router.put("/change-password", protect, authController.changePassword);
-
-// Verificar permís
+// PÃºbliques
+router.post("/register", registerValidators, handleValidation, authController.register);
+router.post("/login", loginValidators, handleValidation, authController.login);
+router.post("/refresh", refreshValidators, handleValidation, authController.refresh);
 router.post(
-  "/check-permission",
-  protect,
-  auditMiddleware,
-  authController.checkPermission
+  "/forgot-password",
+  forgotPasswordValidators,
+  handleValidation,
+  authController.forgotPassword
 );
+router.post(
+  "/reset-password/:token",
+  resetPasswordValidators,
+  handleValidation,
+  authController.resetPassword
+);
+
+// Privades
+router.post("/logout", protect, auditMiddleware, authController.logout);
+router.get("/me", protect, authController.me);
 
 module.exports = router;

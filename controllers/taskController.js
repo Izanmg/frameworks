@@ -1,5 +1,5 @@
 // controllers/taskController.js
-// ?? Lògica de negoci per a les tasques (CRUD + estadístiques + imatges)
+// ?? Lï¿½gica de negoci per a les tasques (CRUD + estadï¿½stiques + imatges)
 // ?? Adaptat per permisos granulars
 
 const Task = require("../models/Task");
@@ -8,13 +8,14 @@ const DEFAULT_TASK_IMAGE =
   process.env.DEFAULT_TASK_IMAGE || "http://localhost:3000/uploads/default-task.jpg";
 
 function isAdmin(req) {
-  const roles = req.userRoles || [];
-  return roles.includes("admin");
+  const role = req.userRole;
+  return role === "admin" || role === "super_admin";
 }
 
 function isUserOnly(req) {
-  const roles = req.userRoles || [];
-  return roles.length === 1 && roles[0] === "user";
+  const role = req.userRole;
+  // RestricciÃ³ per a rols baixos (user/viewer): nomÃ©s veuen les seves tasques
+  return role === "user" || role === "viewer";
 }
 
 function buildChanges(original, updated, fields) {
@@ -37,7 +38,7 @@ function handleMongooseError(res, error) {
   if (error.name === "ValidationError") {
     return res.status(400).json({
       success: false,
-      error: "Dades de tasca no vàlides",
+      error: "Dades de tasca no vï¿½lides",
       details: error.message,
     });
   }
@@ -45,7 +46,7 @@ function handleMongooseError(res, error) {
   if (error.name === "CastError") {
     return res.status(400).json({
       success: false,
-      error: "ID de tasca no vàlid",
+      error: "ID de tasca no vï¿½lid",
     });
   }
 
@@ -100,17 +101,30 @@ exports.createTask = async (req, res) => {
   }
 };
 
-// 2?? Obtenir totes les tasques
-// GET /api/tasks
+// 2ï¸âƒ£ Obtenir totes les tasques (amb paginaciÃ³)
+// GET /api/tasks?page=1&limit=10
 exports.getTasks = async (req, res) => {
   try {
     const query = isUserOnly(req) ? { user: req.user.id } : {};
-    const tasks = await Task.find(query);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const [tasks, total] = await Promise.all([
+      Task.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Task.countDocuments(query),
+    ]);
 
     return res.status(200).json({
       success: true,
       count: tasks.length,
       data: tasks,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     return handleMongooseError(res, error);
@@ -132,10 +146,10 @@ exports.getTaskById = async (req, res) => {
     }
 
     if (isUserOnly(req) && task.user.toString() !== req.user.id) {
-      req.audit.errorMessage = "No tens permís per veure aquesta tasca";
+      req.audit.errorMessage = "No tens permï¿½s per veure aquesta tasca";
       return res.status(403).json({
         success: false,
-        error: "No tens permís per veure aquesta tasca",
+        error: "No tens permï¿½s per veure aquesta tasca",
       });
     }
 
@@ -166,10 +180,10 @@ exports.updateTask = async (req, res) => {
     }
 
     if (isUserOnly(req) && task.user.toString() !== req.user.id) {
-      req.audit.errorMessage = "No tens permís per modificar aquesta tasca";
+      req.audit.errorMessage = "No tens permï¿½s per modificar aquesta tasca";
       return res.status(403).json({
         success: false,
-        error: "No tens permís per modificar aquesta tasca",
+        error: "No tens permï¿½s per modificar aquesta tasca",
       });
     }
 
@@ -207,10 +221,10 @@ exports.deleteTask = async (req, res) => {
     }
 
     if (isUserOnly(req) && task.user.toString() !== req.user.id) {
-      req.audit.errorMessage = "No tens permís per eliminar aquesta tasca";
+      req.audit.errorMessage = "No tens permï¿½s per eliminar aquesta tasca";
       return res.status(403).json({
         success: false,
-        error: "No tens permís per eliminar aquesta tasca",
+        error: "No tens permï¿½s per eliminar aquesta tasca",
       });
     }
 
@@ -229,7 +243,7 @@ exports.deleteTask = async (req, res) => {
   }
 };
 
-// 6?? Actualitzar només la IMATGE d'una tasca
+// 6?? Actualitzar nomï¿½s la IMATGE d'una tasca
 // PUT /api/tasks/:id/image
 exports.updateTaskImage = async (req, res) => {
   const { id } = req.params;
@@ -238,7 +252,7 @@ exports.updateTaskImage = async (req, res) => {
   if (!image || typeof image !== "string" || image.trim() === "") {
     return res.status(400).json({
       success: false,
-      error: "Cal enviar una URL d'imatge vàlida al camp 'image'",
+      error: "Cal enviar una URL d'imatge vï¿½lida al camp 'image'",
     });
   }
 
@@ -252,10 +266,10 @@ exports.updateTaskImage = async (req, res) => {
     }
 
     if (isUserOnly(req) && task.user.toString() !== req.user.id) {
-      req.audit.errorMessage = "No tens permís per modificar aquesta tasca";
+      req.audit.errorMessage = "No tens permï¿½s per modificar aquesta tasca";
       return res.status(403).json({
         success: false,
-        error: "No tens permís per modificar aquesta tasca",
+        error: "No tens permï¿½s per modificar aquesta tasca",
       });
     }
 
@@ -294,10 +308,10 @@ exports.resetTaskImageToDefault = async (req, res) => {
     }
 
     if (isUserOnly(req) && task.user.toString() !== req.user.id) {
-      req.audit.errorMessage = "No tens permís per modificar aquesta tasca";
+      req.audit.errorMessage = "No tens permï¿½s per modificar aquesta tasca";
       return res.status(403).json({
         success: false,
-        error: "No tens permís per modificar aquesta tasca",
+        error: "No tens permï¿½s per modificar aquesta tasca",
       });
     }
 
@@ -321,7 +335,7 @@ exports.resetTaskImageToDefault = async (req, res) => {
   }
 };
 
-// 8?? Estadístiques de tasques
+// 8?? Estadï¿½stiques de tasques
 // GET /api/tasks/stats
 exports.getTaskStats = async (req, res) => {
   try {
@@ -382,7 +396,7 @@ exports.getTaskStats = async (req, res) => {
         ? 0
         : Number((totalHoursReal / totalTasks).toFixed(2));
 
-    // ?? Estadístiques temporals (dates)
+    // ?? Estadï¿½stiques temporals (dates)
     const now = new Date();
     const startOfToday = new Date(
       now.getFullYear(),
@@ -417,7 +431,7 @@ exports.getTaskStats = async (req, res) => {
       (t) => t.completed && t.finished_at && t.finished_at >= startOfToday
     ).length;
 
-    // ?? Descripció + imatges
+    // ?? Descripciï¿½ + imatges
     const tasksWithDescription = tasks.filter(
       (t) => t.description && t.description.trim() !== ""
     ).length;

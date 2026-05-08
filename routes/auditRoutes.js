@@ -1,5 +1,9 @@
+// routes/auditRoutes.js
+// Endpoints d'auditoria (T9)
+
 const express = require("express");
 const router = express.Router();
+
 const auditController = require("../controllers/auditController");
 const { protect } = require("../middleware/authMiddleware");
 const checkPermission = require("../middleware/checkPermission");
@@ -7,17 +11,24 @@ const auditMiddleware = require("../middleware/auditMiddleware");
 
 router.use(protect, auditMiddleware);
 
-router.get("/stats", checkPermission("audit:read"), auditController.getAuditStats);
+router.get("/logs", checkPermission("audit:read"), auditController.list);
 router.get(
-  "/user/:userId",
+  "/logs/:id",
   checkPermission("audit:read"),
-  auditController.getUserAuditLogs
+  auditController.getById
 );
+
+router.get("/stats", checkPermission("audit:read"), auditController.getStats);
 router.get(
-  "/:id",
+  "/stats/user/:userId",
   checkPermission("audit:read"),
-  auditController.getAuditLogById
+  auditController.getStatsByUser
 );
-router.get("/", checkPermission("audit:read"), auditController.getAuditLogs);
+
+router.get(
+  "/export",
+  checkPermission("audit:read"),
+  auditController.exportLogs
+);
 
 module.exports = router;

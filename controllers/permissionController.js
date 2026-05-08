@@ -1,25 +1,81 @@
+// controllers/permissionController.js
+// CRUD de permisos (T9)
+
 const Permission = require("../models/Permission");
 const Role = require("../models/Role");
 
-function formatPermission(permission) {
+function formatPermission(p) {
   return {
-    id: permission._id,
-    name: permission.name,
-    description: permission.description,
-    category: permission.category,
-    createdAt: permission.createdAt,
+    id: p._id,
+    name: p.name,
+    description: p.description,
+    category: p.category,
+    isSystemPermission: p.isSystemPermission,
+    createdAt: p.createdAt,
   };
 }
 
-exports.createPermission = async (req, res) => {
+exports.list = async (req, res, next) => {
+  try {
+    const filter = {};
+    if (req.query.category) filter.category = req.query.category;
+
+    const permissions = await Permission.find(filter).sort({
+      category: 1,
+      name: 1,
+    });
+
+    if (req.query.grouped === "true") {
+      const grouped = permissions.reduce((acc, p) => {
+        if (!acc[p.category]) acc[p.category] = [];
+        acc[p.category].push(formatPermission(p));
+        return acc;
+      }, {});
+      return res.json({ success: true, data: grouped });
+    }
+
+    return res.json({
+      success: true,
+      data: permissions.map(formatPermission),
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+exports.getById = async (req, res, next) => {
+  try {
+    const p = await Permission.findById(req.params.id);
+    if (!p)
+      return res
+        .status(404)
+        .json({ success: false, error: "PermÃ­s no trobat" });
+
+    req.audit.resourceType = "permission";
+    req.audit.resource = String(p._id);
+
+    return res.json({ success: true, data: formatPermission(p) });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+exports.create = async (req, res, next) => {
   try {
     const { name, description, category } = req.body;
+    if (!name || !description || !category) {
+      return res.status(400).json({
+        success: false,
+        error: "name, description i category sÃ³n obligatoris",
+      });
+    }
 
     const existing = await Permission.findOne({ name });
     if (existing) {
       return res.status(400).json({
         success: false,
-        error: "Ja existeix un permís amb aquest nom",
+        error: "Ja existeix un permÃ­s amb aquest nom",
+        code: "DUPLICATE",
       });
     }
 
@@ -31,129 +87,58 @@ exports.createPermission = async (req, res) => {
     });
 
     req.audit.resourceType = "permission";
-    req.audit.resource = permission._id.toString();
+    req.audit.resource = String(permission._id);
     req.audit.changes = { created: true, name: permission.name };
 
     return res.status(201).json({
       success: true,
-      message: "Permís creat correctament",
+      message: "PermÃ­s creat",
       data: formatPermission(permission),
     });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: error.message,
-    });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.getAllPermissions = async (req, res) => {
+exports.update = async (req, res, next) => {
   try {
-    const permissions = await Permission.find().sort({ category: 1, name: 1 });
-    const grouped = permissions.reduce((acc, perm) => {
-      if (!acc[perm.category]) acc[perm.category] = [];
-      acc[perm.category].push(formatPermission(perm));
-      return acc;
-    }, {});
+    const p = await Permission.findById(req.params.id);
+    if (!p)
+      return res
+        .status(404)
+        .json({ success: false, error: "PermÃ­s no trobat" });
 
-    return res.status(200).json({
-      success: true,
-      data: grouped,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
-  }
-};
+    const before = p.description;
+    if (req.body.description) p.description = req.body.description;
+    if (req.body.category) p.category = req.body.category;
 
-exports.getPermissionsByCategory = async (req, res) => {
-  try {
-    const { category } = req.params;
-    const permissions = await Permission.find({ category }).sort({ name: 1 });
-    return res.status(200).json({
-      success: true,
-      data: permissions.map(formatPermission),
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
-  }
-};
-
-exports.getCategories = async (req, res) => {
-  try {
-    const categories = await Permission.distinct("category");
-    return res.status(200).json({
-      success: true,
-      data: categories.sort(),
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
-  }
-};
-
-exports.updatePermission = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { description } = req.body;
-
-    const permission = await Permission.findById(id);
-    if (!permission) {
-      return res.status(404).json({
-        success: false,
-        error: "Permís no trobat",
-      });
-    }
-
-    const before = permission.description;
-
-    if (description) {
-      permission.description = description;
-    }
-
-    await permission.save();
+    await p.save();
 
     req.audit.resourceType = "permission";
-    req.audit.resource = permission._id.toString();
-    if (before !== permission.description) {
-      req.audit.changes = {
-        description: `${before} -> ${permission.description}`,
-      };
+    req.audit.resource = String(p._id);
+    if (before !== p.description) {
+      req.audit.changes = { description: { old: before, new: p.description } };
     }
 
-    return res.status(200).json({
+    return res.json({
       success: true,
-      message: "Permís actualitzat correctament",
-      data: formatPermission(permission),
+      message: "PermÃ­s actualitzat",
+      data: formatPermission(p),
     });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: error.message,
-    });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.deletePermission = async (req, res) => {
+exports.remove = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const permission = await Permission.findById(id);
+    const p = await Permission.findById(req.params.id);
+    if (!p)
+      return res
+        .status(404)
+        .json({ success: false, error: "PermÃ­s no trobat" });
 
-    if (!permission) {
-      return res.status(404).json({
-        success: false,
-        error: "Permís no trobat",
-      });
-    }
-
-    if (permission.isSystemPermission) {
+    if (p.isSystemPermission) {
       return res.status(400).json({
         success: false,
         error: "No es poden eliminar permisos del sistema",
@@ -161,24 +146,17 @@ exports.deletePermission = async (req, res) => {
     }
 
     await Role.updateMany(
-      { permissions: permission._id },
-      { $pull: { permissions: permission._id } }
+      { permissions: p._id },
+      { $pull: { permissions: p._id } }
     );
-
-    await permission.deleteOne();
+    await p.deleteOne();
 
     req.audit.resourceType = "permission";
-    req.audit.resource = id;
-    req.audit.changes = { deleted: true, name: permission.name };
+    req.audit.resource = String(p._id);
+    req.audit.changes = { deleted: true, name: p.name };
 
-    return res.status(200).json({
-      success: true,
-      message: "Permís eliminat correctament",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
+    return res.json({ success: true, message: "PermÃ­s eliminat" });
+  } catch (err) {
+    return next(err);
   }
 };

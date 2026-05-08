@@ -1,40 +1,35 @@
+// controllers/roleController.js
+// CRUD i jerarquia de rols (T9)
+
 const mongoose = require("mongoose");
 const Role = require("../models/Role");
 const Permission = require("../models/Permission");
 const User = require("../models/User");
+const permissionService = require("../services/permissionService");
 
 function isObjectId(value) {
   return mongoose.Types.ObjectId.isValid(value);
 }
 
-async function resolvePermissionIds(permissionsInput) {
-  if (!permissionsInput || !Array.isArray(permissionsInput)) return [];
-
+async function resolvePermissionIds(input) {
+  if (!input || !Array.isArray(input)) return [];
   const ids = new Set();
   const names = new Set();
-
-  permissionsInput.forEach((perm) => {
-    if (isObjectId(perm)) {
-      ids.add(perm);
-    } else if (typeof perm === "string") {
-      names.add(perm.trim());
-    }
-  });
-
-  const foundById = ids.size
-    ? await Permission.find({ _id: { $in: [...ids] } })
-    : [];
-  const foundByName = names.size
-    ? await Permission.find({ name: { $in: [...names] } })
-    : [];
-
-  const all = [...foundById, ...foundByName];
-  const uniqueIds = [...new Set(all.map((perm) => perm._id.toString()))];
-
-  if (uniqueIds.length !== permissionsInput.length) {
-    return null;
+  for (const p of input) {
+    if (typeof p !== "string") continue;
+    if (isObjectId(p)) ids.add(p);
+    else names.add(p.trim());
   }
-
+  const found = [
+    ...(ids.size
+      ? await Permission.find({ _id: { $in: [...ids] } })
+      : []),
+    ...(names.size
+      ? await Permission.find({ name: { $in: [...names] } })
+      : []),
+  ];
+  const uniqueIds = [...new Set(found.map((p) => p._id.toString()))];
+  if (uniqueIds.length !== input.length) return null;
   return uniqueIds;
 }
 
@@ -42,22 +37,26 @@ function formatRole(role) {
   return {
     id: role._id,
     name: role.name,
+    level: role.level,
+    parentRole: role.parentRole,
     description: role.description,
-    permissions: (role.permissions || []).map((perm) => ({
-      id: perm._id,
-      name: perm.name,
-      description: perm.description,
-    })),
+    isActive: role.isActive,
+    isSystemRole: role.isSystemRole,
+    permissions: (role.permissions || []).map((p) =>
+      typeof p === "object" && p.name
+        ? { id: p._id, name: p.name, description: p.description }
+        : p
+    ),
     createdAt: role.createdAt,
     updatedAt: role.updatedAt,
   };
 }
 
-exports.createRole = async (req, res) => {
+exports.create = async (req, res, next) => {
   try {
-    const { name, description, permissions = [] } = req.body;
+    const { name, level, parentRole, description, permissions } = req.body;
 
-    const existing = await Role.findOne({ name });
+    const existing = await Role.findOne({ name: String(name).toLowerCase() });
     if (existing) {
       return res.status(400).json({
         success: false,
@@ -65,8 +64,27 @@ exports.createRole = async (req, res) => {
       });
     }
 
-    const permissionIds = await resolvePermissionIds(permissions);
-    if (!permissionIds) {
+    if (parentRole) {
+      const parent = await Role.findById(parentRole);
+      if (!parent) {
+        return res.status(400).json({
+          success: false,
+          error: "parentRole no trobat",
+        });
+      }
+      if (parent.level <= level) {
+        return res.status(400).json({
+          success: false,
+          error: "El level del rol pare ha de ser superior al fill",
+          code: "HIERARCHY_INVALID",
+        });
+      }
+    }
+
+    const permIds = permissions
+      ? await resolvePermissionIds(permissions)
+      : [];
+    if (permissions && !permIds) {
       return res.status(400).json({
         success: false,
         error: "Alguns permisos no existeixen",
@@ -74,152 +92,134 @@ exports.createRole = async (req, res) => {
     }
 
     const role = await Role.create({
-      name,
-      description,
-      permissions: permissionIds,
-      isSystemRole: false,
+      name: String(name).toLowerCase(),
+      level,
+      parentRole: parentRole || null,
+      description: description || "",
+      permissions: permIds,
     });
 
     await role.populate("permissions");
 
     req.audit.resourceType = "role";
-    req.audit.resource = role._id.toString();
-    req.audit.changes = { created: true, name: role.name };
+    req.audit.resource = String(role._id);
+    req.audit.changes = { created: true, name: role.name, level: role.level };
 
     return res.status(201).json({
       success: true,
       message: "Rol creat correctament",
       data: formatRole(role),
     });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: error.message,
-    });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.getAllRoles = async (req, res) => {
+exports.list = async (req, res, next) => {
   try {
-    const roles = await Role.find().populate("permissions").sort({ name: 1 });
-    return res.status(200).json({
-      success: true,
-      data: roles.map(formatRole),
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
+    const roles = await Role.find()
+      .populate("permissions")
+      .populate("parentRole", "name level")
+      .sort({ level: -1, name: 1 });
+    return res.json({ success: true, data: roles.map(formatRole) });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.getRoleById = async (req, res) => {
+exports.getById = async (req, res, next) => {
   try {
-    const role = await Role.findById(req.params.id).populate("permissions");
-    if (!role) {
-      return res.status(404).json({
-        success: false,
-        error: "Rol no trobat",
-      });
-    }
+    const role = await Role.findById(req.params.id)
+      .populate("permissions")
+      .populate("parentRole", "name level");
+    if (!role)
+      return res.status(404).json({ success: false, error: "Rol no trobat" });
 
     req.audit.resourceType = "role";
-    req.audit.resource = role._id.toString();
+    req.audit.resource = String(role._id);
 
-    return res.status(200).json({
-      success: true,
-      data: formatRole(role),
-    });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: "ID de rol no vàlid",
-    });
+    return res.json({ success: true, data: formatRole(role) });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.updateRole = async (req, res) => {
+exports.update = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { name, description, permissions } = req.body;
+    const role = await Role.findById(req.params.id);
+    if (!role)
+      return res.status(404).json({ success: false, error: "Rol no trobat" });
 
-    const role = await Role.findById(id);
-    if (!role) {
-      return res.status(404).json({
-        success: false,
-        error: "Rol no trobat",
-      });
-    }
-
-    if (role.isSystemRole && name && name !== role.name) {
+    if (role.isSystemRole && req.body.name && req.body.name !== role.name) {
       return res.status(400).json({
         success: false,
         error: "No es poden renombrar rols del sistema",
       });
     }
 
-    const before = {
-      name: role.name,
-      description: role.description,
-    };
+    const before = { ...role.toObject() };
 
-    if (name) role.name = name;
-    if (description) role.description = description;
+    if (req.body.name) role.name = String(req.body.name).toLowerCase();
+    if (req.body.description !== undefined)
+      role.description = req.body.description;
+    if (req.body.level !== undefined) role.level = req.body.level;
+    if (req.body.isActive !== undefined) role.isActive = req.body.isActive;
 
-    if (permissions) {
-      const permissionIds = await resolvePermissionIds(permissions);
-      if (!permissionIds) {
+    if (req.body.parentRole !== undefined) {
+      if (req.body.parentRole === null) {
+        role.parentRole = null;
+      } else {
+        const cycle = await permissionService.wouldCreateCycle(
+          role._id,
+          req.body.parentRole
+        );
+        if (cycle) {
+          return res.status(400).json({
+            success: false,
+            error: "La jerarquia crearia un cicle",
+            code: "HIERARCHY_INVALID",
+          });
+        }
+        role.parentRole = req.body.parentRole;
+      }
+    }
+
+    if (req.body.permissions) {
+      const permIds = await resolvePermissionIds(req.body.permissions);
+      if (!permIds) {
         return res.status(400).json({
           success: false,
           error: "Alguns permisos no existeixen",
         });
       }
-      role.permissions = permissionIds;
+      role.permissions = permIds;
     }
 
     await role.save();
     await role.populate("permissions");
 
-    const changes = {};
-    if (before.name !== role.name) {
-      changes.name = `${before.name} -> ${role.name}`;
-    }
-    if (before.description !== role.description) {
-      changes.description = `${before.description} -> ${role.description}`;
-    }
-    if (permissions) {
-      changes.permissions = "updated";
-    }
-
     req.audit.resourceType = "role";
-    req.audit.resource = role._id.toString();
-    req.audit.changes = Object.keys(changes).length ? changes : null;
+    req.audit.resource = String(role._id);
+    req.audit.changes = {
+      name: { old: before.name, new: role.name },
+      level: { old: before.level, new: role.level },
+    };
 
-    return res.status(200).json({
+    return res.json({
       success: true,
-      message: "Rol actualitzat correctament",
+      message: "Rol actualitzat",
       data: formatRole(role),
     });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: error.message,
-    });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.deleteRole = async (req, res) => {
+exports.remove = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const role = await Role.findById(id);
-
-    if (!role) {
-      return res.status(404).json({
-        success: false,
-        error: "Rol no trobat",
-      });
-    }
+    const role = await Role.findById(req.params.id);
+    if (!role)
+      return res.status(404).json({ success: false, error: "Rol no trobat" });
 
     if (role.isSystemRole) {
       return res.status(400).json({
@@ -228,116 +228,89 @@ exports.deleteRole = async (req, res) => {
       });
     }
 
-    const defaultRole = await Role.findOne({ name: "user" });
-
-    const usersWithRole = await User.find({ roles: role._id });
-    for (const user of usersWithRole) {
-      const remainingRoles = user.roles.filter(
-        (roleId) => roleId.toString() !== role._id.toString()
-      );
-
-      if (remainingRoles.length === 0 && defaultRole) {
-        user.roles = [defaultRole._id];
-      } else {
-        user.roles = remainingRoles;
-      }
-      await user.save();
+    // Comprovar si algun rol tÃ© aquest com a pare
+    const childCount = await Role.countDocuments({ parentRole: role._id });
+    if (childCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `No es pot eliminar: hi ha ${childCount} rols que el tenen com a pare`,
+      });
     }
+
+    // Reassigna usuaris al rol per defecte
+    const defaultRole = await Role.findOne({ name: "user" });
+    await User.updateMany(
+      { role: role._id },
+      defaultRole
+        ? { $set: { role: defaultRole._id, roles: [defaultRole._id] } }
+        : { $unset: { role: "" }, $set: { roles: [] } }
+    );
 
     await role.deleteOne();
 
     req.audit.resourceType = "role";
-    req.audit.resource = id;
+    req.audit.resource = String(role._id);
     req.audit.changes = { deleted: true, name: role.name };
 
-    return res.status(200).json({
-      success: true,
-      message: "Rol eliminat correctament",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
+    return res.json({ success: true, message: "Rol eliminat" });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.addPermissionToRole = async (req, res) => {
+exports.getHierarchy = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const permissionValue = req.body.permissionId || req.body.permission;
-
-    const role = await Role.findById(id);
-    if (!role) {
-      return res.status(404).json({
-        success: false,
-        error: "Rol no trobat",
-      });
+    const chain = await permissionService.getRoleChain(req.params.id);
+    if (!chain.length) {
+      return res
+        .status(404)
+        .json({ success: false, error: "Rol no trobat" });
     }
-
-    const permissionDoc = isObjectId(permissionValue)
-      ? await Permission.findById(permissionValue)
-      : await Permission.findOne({ name: permissionValue });
-
-    if (!permissionDoc) {
-      return res.status(404).json({
-        success: false,
-        error: "Permís no trobat",
-      });
-    }
-
-    await role.addPermission(permissionDoc._id);
-    await role.populate("permissions");
-
-    req.audit.resourceType = "role";
-    req.audit.resource = role._id.toString();
-    req.audit.changes = { permissionAdded: permissionDoc.name };
-
-    return res.status(200).json({
+    return res.json({
       success: true,
-      message: "Permís afegit correctament",
-      data: formatRole(role),
+      data: {
+        roleId: req.params.id,
+        chain: chain.map((r) => ({
+          id: r._id,
+          name: r.name,
+          level: r.level,
+        })),
+      },
     });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: error.message,
-    });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.removePermissionFromRole = async (req, res) => {
+exports.getInheritedPermissions = async (req, res, next) => {
   try {
-    const { id, permissionId } = req.params;
-    const role = await Role.findById(id);
+    const role = await Role.findById(req.params.id);
+    if (!role)
+      return res.status(404).json({ success: false, error: "Rol no trobat" });
 
-    if (!role) {
-      return res.status(404).json({
-        success: false,
-        error: "Rol no trobat",
-      });
-    }
+    const own = await Role.findById(role._id).populate("permissions");
+    const inherited = role.parentRole
+      ? await permissionService.getRoleHierarchyPermissions(role.parentRole)
+      : [];
 
-    const permissionDoc = await Permission.findById(permissionId);
-
-    await role.removePermission(permissionId);
-    await role.populate("permissions");
-
-    req.audit.resourceType = "role";
-    req.audit.resource = role._id.toString();
-    req.audit.changes = {
-      permissionRemoved: permissionDoc ? permissionDoc.name : permissionId,
-    };
-
-    return res.status(200).json({
+    return res.json({
       success: true,
-      message: "Permís eliminat correctament",
-      data: formatRole(role),
+      data: {
+        roleId: role._id,
+        own: (own.permissions || []).map((p) => ({
+          id: p._id,
+          name: p.name,
+          description: p.description,
+        })),
+        inherited: inherited.map((p) => ({
+          id: p._id,
+          name: p.name,
+          description: p.description,
+        })),
+        all: [...new Set([...(own.permissions || []), ...inherited].map((p) => p.name))],
+      },
     });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: error.message,
-    });
+  } catch (err) {
+    return next(err);
   }
 };

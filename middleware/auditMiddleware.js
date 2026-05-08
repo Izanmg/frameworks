@@ -1,3 +1,6 @@
+// middleware/auditMiddleware.js
+// Registra automàticament cada acció realitzada (T9 - amb durada)
+
 const AuditLog = require("../models/AuditLog");
 
 function inferResourceType(req) {
@@ -6,6 +9,7 @@ function inferResourceType(req) {
   if (target.includes("/tasks")) return "task";
   if (target.includes("/roles")) return "role";
   if (target.includes("/permissions")) return "permission";
+  if (target.includes("/delegations")) return "delegation";
   if (target.includes("/audit")) return "audit";
   if (target.includes("/users")) return "user";
   if (target.includes("/auth")) return "auth";
@@ -24,6 +28,8 @@ function inferResource(req) {
 }
 
 const auditMiddleware = (req, res, next) => {
+  const startTime = Date.now();
+
   res.on("finish", async () => {
     if (!req.user) return;
     if (!req.audit || !req.audit.action) return;
@@ -32,6 +38,7 @@ const auditMiddleware = (req, res, next) => {
     const status = res.statusCode >= 400 ? "error" : "success";
     const errorMessage =
       req.audit.errorMessage || res.locals.errorMessage || "";
+    const duration = Date.now() - startTime;
 
     try {
       await AuditLog.log(
@@ -42,7 +49,8 @@ const auditMiddleware = (req, res, next) => {
         status,
         req.audit.changes || null,
         req,
-        errorMessage
+        errorMessage,
+        duration
       );
       res.locals.auditLogged = true;
     } catch (error) {
@@ -51,7 +59,6 @@ const auditMiddleware = (req, res, next) => {
   });
 
   req.audit = req.audit || {};
-
   next();
 };
 

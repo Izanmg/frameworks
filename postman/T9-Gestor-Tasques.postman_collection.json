@@ -1,0 +1,797 @@
+{
+  "info": {
+    "name": "T9 - Gestor de Tasques (51 proves)",
+    "description": "Col·lecció Postman per a la pràctica OP1-B1-NODE-09. Inclou totes les 51 proves descrites al PDF: Autenticació, Usuaris, Rols, Permisos, Delegació, Auditoria, Tasques, Seguretat i Errors.\n\nAutomatitzacions:\n- En el login, guarda accessToken i refreshToken com a variables.\n- En crear recursos, guarda els IDs (USER_ID, ROLE_ID, PERM_ID, DELEG_ID, TASK_ID).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "t9-gestor-tasques-2026"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "email", "value": "admin@example.com", "type": "string" },
+    { "key": "password", "value": "Admin123!", "type": "string" },
+    { "key": "accessToken", "value": "", "type": "string" },
+    { "key": "refreshToken", "value": "", "type": "string" },
+    { "key": "ACCESS_TOKEN_ADMIN", "value": "", "type": "string" },
+    { "key": "ACCESS_TOKEN_MANAGER", "value": "", "type": "string" },
+    { "key": "ACCESS_TOKEN_USER", "value": "", "type": "string" },
+    { "key": "ACCESS_TOKEN_EXPIRAT", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJkdW1teSIsImlhdCI6MTAwMCwiZXhwIjoyMDAwfQ.invalid", "type": "string" },
+    { "key": "USER_ID", "value": "", "type": "string" },
+    { "key": "USER_ID_OTHER", "value": "", "type": "string" },
+    { "key": "ROLE_ID", "value": "", "type": "string" },
+    { "key": "ROLE_ID_SUPERIOR", "value": "", "type": "string" },
+    { "key": "PERM_ID", "value": "", "type": "string" },
+    { "key": "DELEG_ID", "value": "", "type": "string" },
+    { "key": "TASK_ID", "value": "", "type": "string" },
+    { "key": "RESET_TOKEN", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1. AUTENTICACIÓ (7 proves)",
+      "item": [
+        {
+          "name": "1.1 Registre d'Usuari",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"joan@example.com\",\n  \"password\": \"Password123!\",\n  \"firstName\": \"Joan\",\n  \"lastName\": \"Garcia\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r && r.data) {",
+                  "  if (r.data.user && r.data.user.id) pm.collectionVariables.set('USER_ID', r.data.user.id);",
+                  "  if (r.data.accessToken) pm.collectionVariables.set('ACCESS_TOKEN_USER', r.data.accessToken);",
+                  "}",
+                  "pm.test('201 o 400 (si ja existeix)', function () {",
+                  "  pm.expect([201, 400]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Login Correcte (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', function () { pm.response.to.have.status(200); });",
+                  "const r = pm.response.json();",
+                  "pm.expect(r.data.accessToken).to.be.a('string');",
+                  "pm.expect(r.data.refreshToken).to.be.a('string');",
+                  "pm.collectionVariables.set('accessToken', r.data.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', r.data.refreshToken);",
+                  "pm.collectionVariables.set('ACCESS_TOKEN_ADMIN', r.data.accessToken);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Login amb Password Incorrecte",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"joan@example.com\",\n  \"password\": \"PasswordIncorrecte123!\"\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('401', () => pm.response.to.have.status(401));" ] } }
+          ]
+        },
+        {
+          "name": "1.4 Renovar Access Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/refresh",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.expect(r.data.accessToken).to.be.a('string');",
+                  "pm.collectionVariables.set('accessToken', r.data.accessToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.5 Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/auth/logout",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('200 OK', () => pm.response.to.have.status(200));" ] } }
+          ]
+        },
+        {
+          "name": "1.6 Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/forgot-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"joan@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "if (r.devToken) pm.collectionVariables.set('RESET_TOKEN', r.devToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.7 Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/reset-password/{{RESET_TOKEN}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"NovaPassword123!\"\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('200 OK o 400', () => pm.expect([200,400]).to.include(pm.response.code));" ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. USUARIS (5 proves)",
+      "item": [
+        {
+          "name": "2.1 Llistar Usuaris (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/users"
+          }
+        },
+        {
+          "name": "2.2 Obtenir Usuari per ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/users/{{USER_ID}}"
+          }
+        },
+        {
+          "name": "2.3 Actualitzar Usuari",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/users/{{USER_ID}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Joan\",\n  \"lastName\": \"Garcia Actualitzat\"\n}"
+            }
+          }
+        },
+        {
+          "name": "2.4 Obtenir Permisos de l'Usuari",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/users/{{USER_ID}}/permissions"
+          }
+        },
+        {
+          "name": "2.5 Esborrar Usuari (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/users/{{USER_ID}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. ROLS (8 proves)",
+      "item": [
+        {
+          "name": "3.1 Llistar Rols",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/roles"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.data) {",
+                  "  const user = r.data.find(x => x.name === 'user');",
+                  "  const admin = r.data.find(x => x.name === 'admin');",
+                  "  if (user) pm.collectionVariables.set('ROLE_ID', user.id);",
+                  "  if (admin) pm.collectionVariables.set('ROLE_ID_SUPERIOR', admin.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Obtenir Rol per ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}"
+          }
+        },
+        {
+          "name": "3.3 Crear Rol (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/roles",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"editor\",\n  \"level\": 2,\n  \"parentRole\": \"{{ROLE_ID_SUPERIOR}}\",\n  \"permissions\": [\"tasks:create\", \"tasks:update\"],\n  \"description\": \"Editor de tasques\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.data && r.data.id) pm.collectionVariables.set('ROLE_ID', r.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.4 Actualitzar Rol (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Editor actualitzat de tasques\"\n}"
+            }
+          }
+        },
+        {
+          "name": "3.5 Obtenir Jerarquia de Rol",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}/hierarchy"
+          }
+        },
+        {
+          "name": "3.6 Obtenir Permisos Heretats d'un Rol",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}/permissions"
+          }
+        },
+        {
+          "name": "3.7 Esborrar Rol (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/roles/{{ROLE_ID}}"
+          }
+        },
+        {
+          "name": "3.8 Validar Jerarquia (Error - level superior al pare)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/roles",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"invalid_role_test\",\n  \"level\": 9,\n  \"parentRole\": \"{{ROLE_ID_SUPERIOR}}\"\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));" ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. PERMISOS (6 proves)",
+      "item": [
+        {
+          "name": "4.1 Llistar Permisos",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/permissions"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.data && Array.isArray(r.data) && r.data[0]) {",
+                  "  pm.collectionVariables.set('PERM_ID', r.data[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 Obtenir Permís per ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/permissions/{{PERM_ID}}"
+          }
+        },
+        {
+          "name": "4.3 Crear Permís (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/permissions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"tasks:archive\",\n  \"description\": \"Arxivar tasques\",\n  \"category\": \"tasks\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.data && r.data.id) pm.collectionVariables.set('PERM_ID', r.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.4 Actualitzar Permís (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/permissions/{{PERM_ID}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Arxivar tasques (actualitzat)\"\n}"
+            }
+          }
+        },
+        {
+          "name": "4.5 Esborrar Permís (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/permissions/{{PERM_ID}}"
+          }
+        },
+        {
+          "name": "4.6 Error - Crear Permís Duplicat",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/permissions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"tasks:create\",\n  \"description\": \"Crear tasques\",\n  \"category\": \"tasks\"\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));" ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. DELEGACIÓ DE PERMISOS (6 proves)",
+      "item": [
+        {
+          "name": "5.1 Llistar Delegacions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/delegations"
+          }
+        },
+        {
+          "name": "5.2 Obtenir Delegació per ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/delegations/{{DELEG_ID}}"
+          }
+        },
+        {
+          "name": "5.3 Crear Delegació",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/delegations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toUserId\": \"{{USER_ID}}\",\n  \"permission\": \"tasks:assign\",\n  \"reason\": \"Cobertura de vacances\",\n  \"daysValid\": 5\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.data && r.data.id) pm.collectionVariables.set('DELEG_ID', r.data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.4 Obtenir Delegacions d'un Usuari",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/delegations/user/{{USER_ID}}"
+          }
+        },
+        {
+          "name": "5.5 Revocar Delegació",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/delegations/{{DELEG_ID}}"
+          }
+        },
+        {
+          "name": "5.6 Error - Delegació Invàlida (daysValid negatiu)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/delegations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toUserId\": \"{{USER_ID}}\",\n  \"permission\": \"tasks:assign\",\n  \"reason\": \"Prova\",\n  \"daysValid\": -1\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('400 Bad Request', () => pm.response.to.have.status(400));" ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. AUDITORIA (5 proves)",
+      "item": [
+        {
+          "name": "6.1 Obtenir Logs d'Auditoria",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/audit/logs"
+          }
+        },
+        {
+          "name": "6.2 Filtrar Logs per Acció",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/audit/logs?action=tasks:update"
+          }
+        },
+        {
+          "name": "6.3 Filtrar Logs per Usuari",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/audit/logs?userId={{USER_ID}}"
+          }
+        },
+        {
+          "name": "6.4 Obtenir Estadístiques d'Auditoria",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/audit/stats"
+          }
+        },
+        {
+          "name": "6.5 Exportar Logs d'Auditoria (CSV)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/audit/export?format=csv"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. TASQUES (5 proves)",
+      "item": [
+        {
+          "name": "7.1 Crear Tasca (Amb Auditoria)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/tasks",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Tasca nova T9\",\n  \"description\": \"Descripció de la tasca\",\n  \"cost\": 100,\n  \"hours_estimated\": 8\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "if (r.data && r.data._id) pm.collectionVariables.set('TASK_ID', r.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7.2 Llistar Tasques (Amb Paginació)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/tasks?page=1&limit=10"
+          }
+        },
+        {
+          "name": "7.3 Actualitzar Tasca (Amb Canvis en Auditoria)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/tasks/{{TASK_ID}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Tasca actualitzada\",\n  \"completed\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "7.4 Obtenir Tasca per ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/tasks/{{TASK_ID}}"
+          }
+        },
+        {
+          "name": "7.5 Esborrar Tasca (Amb Auditoria)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/tasks/{{TASK_ID}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. SEGURETAT (5 proves)",
+      "item": [
+        {
+          "name": "8.1 Accés sense Token",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/tasks"
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('401', () => pm.response.to.have.status(401));" ] } }
+          ]
+        },
+        {
+          "name": "8.2 Token Invàlid",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer token_invalido_123" }],
+            "url": "{{baseUrl}}/api/tasks"
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('401', () => pm.response.to.have.status(401));" ] } }
+          ]
+        },
+        {
+          "name": "8.3 Token Expirat",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_EXPIRAT}}" }],
+            "url": "{{baseUrl}}/api/tasks"
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('401', () => pm.response.to.have.status(401));" ] } }
+          ]
+        },
+        {
+          "name": "8.4 Accés a Ruta Protegida sense Permís",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_USER}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/api/roles",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"test\",\n  \"level\": 1\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('403 Forbidden', () => pm.response.to.have.status(403));" ] } }
+          ]
+        },
+        {
+          "name": "8.5 Rate Limiting (Massa Peticions)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_USER}}" }],
+            "url": "{{baseUrl}}/api/tasks"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Per obtenir 429 cal fer 101+ peticions en menys d'un minut.",
+                  "// Aquest test només comprova que els headers X-RateLimit-* hi siguin.",
+                  "pm.test('Capçalera X-RateLimit-Limit existeix', () => {",
+                  "  pm.expect(pm.response.headers.get('X-RateLimit-Limit')).to.not.be.null;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. ERRORS (4 proves)",
+      "item": [
+        {
+          "name": "9.1 Validació - Email Invàlid",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"email_invalido\",\n  \"password\": \"Password123!\",\n  \"firstName\": \"Joan\",\n  \"lastName\": \"Garcia\"\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('400', () => pm.response.to.have.status(400));" ] } }
+          ]
+        },
+        {
+          "name": "9.2 Validació - Contrasenya Feble",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"feble@example.com\",\n  \"password\": \"123\",\n  \"firstName\": \"Joan\",\n  \"lastName\": \"Garcia\"\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('400', () => pm.response.to.have.status(400));" ] } }
+          ]
+        },
+        {
+          "name": "9.3 Validació - Email Duplicat",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@example.com\",\n  \"password\": \"Password123!\",\n  \"firstName\": \"Joan\",\n  \"lastName\": \"Garcia\"\n}"
+            }
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('400', () => pm.response.to.have.status(400));" ] } }
+          ]
+        },
+        {
+          "name": "9.4 Recurs No Trobat",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{ACCESS_TOKEN_ADMIN}}" }],
+            "url": "{{baseUrl}}/api/tasks/000000000000000000000000"
+          },
+          "event": [
+            { "listen": "test", "script": { "exec": [ "pm.test('404', () => pm.response.to.have.status(404));" ] } }
+          ]
+        }
+      ]
+    }
+  ]
+}

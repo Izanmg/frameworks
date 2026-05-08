@@ -1,0 +1,29 @@
+# Dependències
+node_modules/
+
+# Variables d'entorn (mai pujar credencials!)
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+
+# Uploads locals (proves)
+uploads/*
+!uploads/.gitkeep
+!uploads/default-task.jpg
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Backups / zips antics
+*.zip
+package-lock.zip

@@ -1,150 +1,183 @@
+// controllers/auditController.js
+// Auditoria avanÃ§ada (T9): logs, filtres, stats, export CSV/JSON
+
 const AuditLog = require("../models/AuditLog");
 
 function formatLog(log) {
   return {
     id: log._id,
-    userId: log.userId?._id || log.userId,
-    userName: log.userId?.name || undefined,
+    user: log.userId
+      ? {
+          id: log.userId._id || log.userId,
+          email: log.userId.email,
+          name:
+            log.userId.firstName && log.userId.lastName
+              ? `${log.userId.firstName} ${log.userId.lastName}`
+              : undefined,
+        }
+      : null,
     action: log.action,
     resource: log.resource,
     resourceType: log.resourceType,
     status: log.status,
     changes: log.changes,
+    errorMessage: log.errorMessage,
     ipAddress: log.ipAddress,
     userAgent: log.userAgent,
+    duration: log.duration,
     timestamp: log.timestamp,
   };
 }
 
-exports.getAuditLogs = async (req, res) => {
+exports.list = async (req, res, next) => {
   try {
-    const { userId, action, startDate, endDate, page = 1, limit = 20 } = req.query;
-    const filters = {};
+    const {
+      userId,
+      action,
+      resourceType,
+      status,
+      startDate,
+      endDate,
+      page = 1,
+      limit = 20,
+    } = req.query;
 
-    if (userId) filters.userId = userId;
-    if (action) filters.action = action;
-
+    const filter = {};
+    if (userId) filter.userId = userId;
+    if (action) filter.action = action;
+    if (resourceType) filter.resourceType = resourceType;
+    if (status) filter.status = status;
     if (startDate || endDate) {
-      filters.timestamp = {};
-      if (startDate) filters.timestamp.$gte = new Date(startDate);
-      if (endDate) filters.timestamp.$lte = new Date(endDate);
+      filter.timestamp = {};
+      if (startDate) filter.timestamp.$gte = new Date(startDate);
+      if (endDate) filter.timestamp.$lte = new Date(endDate);
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const pageN = Math.max(1, Number(page));
+    const limitN = Math.min(200, Math.max(1, Number(limit)));
+    const skip = (pageN - 1) * limitN;
 
-    const [logs, count] = await Promise.all([
-      AuditLog.find(filters)
+    const [logs, total] = await Promise.all([
+      AuditLog.find(filter)
         .sort({ timestamp: -1 })
         .skip(skip)
-        .limit(Number(limit))
-        .populate("userId", "name"),
-      AuditLog.countDocuments(filters),
+        .limit(limitN)
+        .populate("userId", "email firstName lastName"),
+      AuditLog.countDocuments(filter),
     ]);
 
-    return res.status(200).json({
+    return res.json({
       success: true,
-      count,
       data: logs.map(formatLog),
+      pagination: {
+        total,
+        page: pageN,
+        limit: limitN,
+        pages: Math.ceil(total / limitN),
+      },
     });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.getAuditLogById = async (req, res) => {
+exports.getById = async (req, res, next) => {
   try {
-    const log = await AuditLog.findById(req.params.id).populate("userId", "name");
-    if (!log) {
-      return res.status(404).json({
-        success: false,
-        error: "Registre no trobat",
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: formatLog(log),
-    });
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      error: "ID no vàlid",
-    });
+    const log = await AuditLog.findById(req.params.id).populate(
+      "userId",
+      "email firstName lastName"
+    );
+    if (!log)
+      return res
+        .status(404)
+        .json({ success: false, error: "Registre no trobat" });
+    return res.json({ success: true, data: formatLog(log) });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.getUserAuditLogs = async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const logs = await AuditLog.find({ userId })
-      .sort({ timestamp: -1 })
-      .populate("userId", "name");
-
-    return res.status(200).json({
-      success: true,
-      count: logs.length,
-      data: logs.map(formatLog),
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
-  }
-};
-
-exports.getAuditStats = async (req, res) => {
+exports.getStats = async (req, res, next) => {
   try {
     const stats = await AuditLog.getStats();
-    return res.status(200).json({
-      success: true,
-      data: stats,
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
+    return res.json({ success: true, data: stats });
+  } catch (err) {
+    return next(err);
   }
 };
 
-exports.exportAuditLogs = async (req, res) => {
+exports.getStatsByUser = async (req, res, next) => {
   try {
-    const logs = await AuditLog.find().sort({ timestamp: -1 });
+    const stats = await AuditLog.getStatsForUser(req.params.userId);
+    return res.json({
+      success: true,
+      data: { userId: req.params.userId, ...stats },
+    });
+  } catch (err) {
+    return next(err);
+  }
+};
+
+exports.exportLogs = async (req, res, next) => {
+  try {
+    const format = (req.query.format || "csv").toLowerCase();
+    const logs = await AuditLog.find()
+      .sort({ timestamp: -1 })
+      .limit(10000)
+      .populate("userId", "email firstName lastName")
+      .lean();
+
+    if (format === "json") {
+      res.setHeader("Content-Type", "application/json");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename=audit-logs-${Date.now()}.json`
+      );
+      return res.send(JSON.stringify(logs, null, 2));
+    }
+
     const headers = [
       "id",
       "userId",
+      "userEmail",
       "action",
       "resource",
       "resourceType",
       "status",
+      "duration",
+      "ipAddress",
       "timestamp",
     ];
+    const escape = (v) => {
+      const s = v === null || v === undefined ? "" : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
 
-    const rows = logs.map((log) => [
-      log._id,
-      log.userId,
-      log.action,
-      log.resource,
-      log.resourceType,
-      log.status,
-      log.timestamp.toISOString(),
+    const rows = logs.map((l) => [
+      l._id,
+      l.userId?._id || l.userId || "",
+      l.userId?.email || "",
+      l.action,
+      l.resource,
+      l.resourceType,
+      l.status,
+      l.duration,
+      l.ipAddress,
+      l.timestamp.toISOString(),
     ]);
 
-    const csv = [headers.join(","), ...rows.map((row) => row.join(","))].join(
-      "\n"
-    );
+    const csv = [
+      headers.join(","),
+      ...rows.map((r) => r.map(escape).join(",")),
+    ].join("\n");
 
-    res.setHeader("Content-Type", "text/csv");
-    res.setHeader("Content-Disposition", "attachment; filename=audit-logs.csv");
-    return res.status(200).send(csv);
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: "Error de servidor",
-    });
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=audit-logs-${Date.now()}.csv`
+    );
+    return res.send(csv);
+  } catch (err) {
+    return next(err);
   }
 };
